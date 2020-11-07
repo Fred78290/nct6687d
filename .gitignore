@@ -1,0 +1,15 @@
+.Module.symvers.cmd
+.modules.order.cmd
+.nct6687.ko.cmd
+.nct6687.mod.cmd
+.nct6687.mod.o.cmd
+.nct6687.o.cmd
+linux-headers
+Module.symvers
+modules.order
+nct6687.ko
+nct6687.mod
+nct6687.mod.c
+nct6687.mod.o
+nct6687.o
+.vscode/
