@@ -523,21 +523,21 @@ static umode_t nct6687_voltage_is_visible(struct kobject *kobj, struct attribute
 	return attr->mode;
 }
 
-SENSOR_TEMPLATE(in_label, "voltage%d_label", S_IRUGO, show_voltage_label, NULL, 0);
-SENSOR_TEMPLATE_2(in_input, "voltage%d_input", S_IRUGO, show_voltage, NULL, 0, 0);
-SENSOR_TEMPLATE_2(in_min, "voltage%d_min", S_IRUGO, show_voltage, NULL, 0, 1);
-SENSOR_TEMPLATE_2(in_max, "voltage%d_max", S_IRUGO, show_voltage, NULL, 0, 2);
+SENSOR_TEMPLATE(voltage_label, "voltage%d_label", S_IRUGO, show_voltage_label, NULL, 0);
+SENSOR_TEMPLATE_2(voltage_input, "voltage%d_input", S_IRUGO, show_voltage, NULL, 0, 0);
+SENSOR_TEMPLATE_2(voltage_min, "voltage%d_min", S_IRUGO, show_voltage, NULL, 0, 1);
+SENSOR_TEMPLATE_2(voltage_max, "voltage%d_max", S_IRUGO, show_voltage, NULL, 0, 2);
 
-static struct sensor_device_template *nct6687_attributes_in_template[] = {
-	&sensor_dev_template_in_label,
-	&sensor_dev_template_in_input,
-	&sensor_dev_template_in_min,
-	&sensor_dev_template_in_max,
+static struct sensor_device_template *nct6687_attributes_voltage_template[] = {
+	&sensor_dev_template_voltage_label,
+	&sensor_dev_template_voltage_input,
+	&sensor_dev_template_voltage_min,
+	&sensor_dev_template_voltage_max,
 	NULL,
 };
 
-static const struct sensor_template_group nct6687_in_template_group = {
-	.templates = nct6687_attributes_in_template,
+static const struct sensor_template_group nct6687_voltage_template_group = {
+	.templates = nct6687_attributes_voltage_template,
 	.is_visible = nct6687_voltage_is_visible,
 };
 
@@ -912,7 +912,7 @@ static int nct6687_probe(struct platform_device *pdev)
 		data->groups[groups++] = group;
 	}
 
-	group = nct6687_create_attr_group(dev, &nct6687_in_template_group, NCT6687_NUM_REG_VOLTAGE);
+	group = nct6687_create_attr_group(dev, &nct6687_voltage_template_group, NCT6687_NUM_REG_VOLTAGE);
 
 	if (IS_ERR(group))
 		return PTR_ERR(group);
