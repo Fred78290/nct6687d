@@ -795,7 +795,7 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 		data->_initialFanPwmCommand[i] = nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(i));
 		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
 
-		pr_debug("nct6687_setup_pwm[%d]], addr=%04X, pwm=%d, _initialFanPwmCommand=%d\n", i, NCT6687_REG_FAN_PWM_COMMAND(i), data->pwm[i], data->_initialFanPwmCommand[i]);
+		pr_debug("nct6687_setup_pwm[%d], addr=%04X, pwm=%d, _initialFanPwmCommand=%d\n", i, NCT6687_REG_FAN_PWM_COMMAND(i), data->pwm[i], data->_initialFanPwmCommand[i]);
 	}
 }
 
