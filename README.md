@@ -56,7 +56,7 @@ M2_1:            +0.0°C  (low  =  +0.0°C, high =  +0.0°C)
 
 ## Gnome sensors extensions
 
-[![Fan](./images/fan.png)][![Fan](./images/voltage.png)]
+[![Fan]](./images/fan.png)[![Fan]](./images/voltage.png)
 ## Tested
 
 This module was tested on Ubuntu 20.04 with [Linux Kernel 5.8.18-050818-generic](https://kernel.ubuntu.com/~kernel-ppa/mainline/v5.8.18/) on motherboard [MAG-B550-TOMAHAWK](https://www.msi.com//Motherboard/MAG-B550-TOMAHAWK) running an [AMD 3900X](https://www.amd.com/en/products/cpu/amd-ryzen-9-3900x)
