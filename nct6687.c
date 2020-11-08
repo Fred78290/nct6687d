@@ -13,12 +13,13 @@
  * 
  * Supports the following chips:
  *
- * Chip        #vin    #fan    #pwm    #temp  chip   IDs     man ID
- * nct6687    14      8       8       7      0xd592 0xc1    0x5ca3
+ * Chip       #voltage   #fan    #pwm    #temp  chip ID
+ * nct6687    14(1)      8       8       7      0xd592
  *
  * Notes:
- *	(1) Total number of vin and temp inputs is 32.
+ *	(1) Total number of voltage and 9 displayed.
  */
+#define DEBUG
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/acpi.h>
@@ -33,6 +34,9 @@
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
 
 enum kinds
 {
@@ -120,7 +124,7 @@ static inline void superio_exit(int ioreg)
 
 /* Common and NCT6687 specific data */
 
-#define NCT6687_NUM_REG_VOLTAGE 14
+#define NCT6687_NUM_REG_VOLTAGE (sizeof(nct6687_voltage_definition) / sizeof(struct voltage_reg))
 #define NCT6687_NUM_REG_TEMP 7
 #define NCT6687_NUM_REG_FAN 8
 #define NCT6687_NUM_REG_PWM 8
@@ -167,22 +171,68 @@ static inline void superio_exit(int ioreg)
 #define EC_SPACE_DATA_REGISTER_OFFSET 0x06
 #define EC_SPACE_PAGE_SELECT 0xFF
 
-static const char *const nct6687_voltage_label[] = {
-	"+12V",
-	"+5V",
-	"Vcore",
-	"Voltage #1",
-	"DIMM",
-	"CPU I/O",
-	"CPU SA",
-	"Voltage #2",
-	"AVCC3",
-	"VTT",
-	"VRef",
-	"VSB",
-	"AVSB",
-	"VBat",
-	NULL,
+struct voltage_reg
+{
+	u16 reg;
+	u16 multiplier;
+	const char *label;
+};
+
+static struct voltage_reg nct6687_voltage_definition[] = {
+	// +12V
+	{
+		.reg = 0,
+		.multiplier = 12,
+		.label = "+12V",
+	},
+	// + 5V
+	{
+		.reg = 1,
+		.multiplier = 5,
+		.label = "+5V",
+	},
+	// +3.3V
+	{
+		.reg = 11,
+		.multiplier = 1,
+		.label = "+3.3V",
+	},
+	// CPU SOC
+	{
+		.reg = 2,
+		.multiplier = 1,
+		.label = "CPU Soc",
+	},
+	// CPU Vcore
+	{
+		.reg = 4,
+		.multiplier = 1,
+		.label = "CPU Vcore",
+	},
+	// CPU 1P8
+	{
+		.reg = 9,
+		.multiplier = 1,
+		.label = "CPU 1P8",
+	},
+	// CPU VDDP
+	{
+		.reg = 10,
+		.multiplier = 1,
+		.label = "CPU VDDP",
+	},
+	// DRAM
+	{
+		.reg = 3,
+		.multiplier = 2,
+		.label = "DRAM",
+	},
+	// DRAM
+	{
+		.reg = 5,
+		.multiplier = 1,
+		.label = "Chipset",
+	},
 };
 
 static const char *const nct6687_temp_label[] = {
@@ -209,7 +259,6 @@ static const char *const nct6687_fan_label[] = {
 };
 
 /* ------------------------------------------------------- */
-
 struct nct6687_data
 {
 	int addr;	/* IO base of EC space */
@@ -224,19 +273,17 @@ struct nct6687_data
 	unsigned long last_updated; /* In jiffies */
 
 	/* Voltage values */
-	s16 voltage[NCT6687_NUM_REG_VOLTAGE];
+	s16 voltage[3][NCT6687_NUM_REG_VOLTAGE]; // 0 = current 1 = min 2 = max
 
 	/* Temperature values */
-	s32 temperature[NCT6687_NUM_REG_TEMP];
+	s32 temperature[3][NCT6687_NUM_REG_TEMP]; // 0 = current 1 = min 2 = max
 
 	/* Fan attribute values */
-	u16 rpm[NCT6687_NUM_REG_FAN];
+	u16 rpm[3][NCT6687_NUM_REG_FAN]; // 0 = current 1 = min 2 = max
 	u8 _initialFanControlMode[NCT6687_NUM_REG_FAN];
 	u8 _initialFanPwmCommand[NCT6687_NUM_REG_FAN];
 	bool _restoreDefaultFanControlRequired[NCT6687_NUM_REG_FAN];
-	u16 fan_min[NCT6687_NUM_REG_FAN];
 
-	u8 have_pwm;
 	u8 pwm[NCT6687_NUM_REG_PWM];
 
 	/* Remember extra register values over suspend/resume */
@@ -421,15 +468,63 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	outb_p(value, data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
 }
 
-static void nct6687_update_pwm(struct device *dev)
+static void nct6687_update_temperatures(struct nct6687_data *data)
 {
-	struct nct6687_data *data = dev_get_drvdata(dev);
 	int i;
+
+	for (i = 0; i < NCT6687_NUM_REG_TEMP; i++)
+	{
+		s32 value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
+		s32 half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
+		s32 temperature = (value * 1000) + (5 * half);
+
+		data->temperature[0][i] = temperature;
+		data->temperature[1][i] = MIN(temperature, data->temperature[1][i]);
+		data->temperature[2][i] = MAX(temperature, data->temperature[2][i]);
+
+		pr_debug("nct6687_update_temperatures[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n", i, NCT6687_REG_TEMP(i), value, half, temperature);
+	}
+}
+
+static void nct6687_update_voltage(struct nct6687_data *data)
+{
+	int index;
+
+	/* Measured voltages and limits */
+	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++)
+	{
+		s16 reg = nct6687_voltage_definition[index].reg;
+		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
+		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
+		s16 value = low + high;
+		s16 voltage = value * nct6687_voltage_definition[index].multiplier;
+
+		data->voltage[0][index] = voltage;
+		data->voltage[1][index] = MIN(voltage, data->voltage[1][index]);
+		data->voltage[2][index] = MAX(voltage, data->voltage[2][index]);
+
+		pr_debug("nct6687_update_voltage[%d], %s, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_definition[index].label, NCT6687_REG_VOLTAGE(index), value, voltage);
+	}
+
+	pr_debug("nct6687_update_voltage\n");
+	pr_debug("nct6687_update_voltage\n");
+}
+
+static void nct6687_update_fans(struct nct6687_data *data)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(data->rpm); i++)
+	{
+		s16 rmp = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
+
+		data->rpm[0][i] = rmp;
+		data->rpm[1][i] = MIN(rmp, data->rpm[1][i]);
+		data->rpm[2][i] = MAX(rmp, data->rpm[2][i]);
+	}
 
 	for (i = 0; i < NCT6687_NUM_REG_PWM; i++)
 	{
-		if (!(data->have_pwm & (1 << i)))
-			continue;
 		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
 	}
 }
@@ -437,54 +532,19 @@ static void nct6687_update_pwm(struct device *dev)
 static struct nct6687_data *nct6687_update_device(struct device *dev)
 {
 	struct nct6687_data *data = dev_get_drvdata(dev);
-	int i;
 
 	mutex_lock(&data->update_lock);
 
 	if (time_after(jiffies, data->last_updated + HZ) || !data->valid)
 	{
 		/* Measured voltages and limits */
-		for (i = 0; i < NCT6687_NUM_REG_VOLTAGE; i++)
-		{
-			s16 high = nct6687_read(data, NCT6687_REG_TEMP(i)) * 16;
-			s16 low = ((u16)nct6687_read(data, NCT6687_REG_TEMP(i) + 1)) >> 4;
-			s16 value = low + high;
-
-			switch (i)
-			{
-			case 0:
-				value *= 12;
-				break;
-			case 1:
-				value *= 5;
-				break;
-			case 4:
-				value *= 2;
-				break;
-
-			default:
-				break;
-			}
-			data->voltage[i] = value;
-		}
+		nct6687_update_voltage(data);
 
 		/* Measured temperatures and limits */
-		for (i = 0; i < NCT6687_NUM_REG_TEMP; i++)
-		{
-			s32 value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
-			s32 half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
-
-			data->temperature[i] = (value * 1000) + (5 * half);
-		}
+		nct6687_update_temperatures(data);
 
 		/* Measured fan speeds and limits */
-		for (i = 0; i < ARRAY_SIZE(data->rpm); i++)
-		{
-			data->rpm[i] = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
-			data->fan_min[i] = nct6687_read16(data, NCT6687_REG_FAN_MIN(i));
-		}
-
-		nct6687_update_pwm(dev);
+		nct6687_update_fans(data);
 
 		data->last_updated = jiffies;
 		data->valid = true;
@@ -502,27 +562,27 @@ static ssize_t show_voltage_label(struct device *dev, struct device_attribute *a
 {
 	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
 
-	return sprintf(buf, "%s\n", nct6687_voltage_label[sattr->index]);
+	return sprintf(buf, "%s\n", nct6687_voltage_definition[sattr->index].label);
 }
 
-static ssize_t show_voltage(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t show_voltage_value(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
 	struct nct6687_data *data = nct6687_update_device(dev);
-	int index = sattr->index;
 
-	return sprintf(buf, "%d\n", data->voltage[index]);
+	return sprintf(buf, "%d\n", data->voltage[sattr->index][sattr->nr]);
 }
 
 static umode_t nct6687_voltage_is_visible(struct kobject *kobj, struct attribute *attr, int index)
 {
+	pr_debug("nct6687_voltage_is_visible[%d], attr=0x%04X\n", index, attr->mode);
 	return attr->mode;
 }
 
-SENSOR_TEMPLATE(voltage_label, "voltage%d_label", S_IRUGO, show_voltage_label, NULL, 0);
-SENSOR_TEMPLATE_2(voltage_input, "voltage%d_input", S_IRUGO, show_voltage, NULL, 0, 0);
-SENSOR_TEMPLATE_2(voltage_min, "voltage%d_min", S_IRUGO, show_voltage, NULL, 0, 1);
-SENSOR_TEMPLATE_2(voltage_max, "voltage%d_max", S_IRUGO, show_voltage, NULL, 0, 2);
+SENSOR_TEMPLATE(voltage_label, "in%d_label", S_IRUGO, show_voltage_label, NULL, 0);
+SENSOR_TEMPLATE_2(voltage_input, "in%d_input", S_IRUGO, show_voltage_value, NULL, 0, 0);
+SENSOR_TEMPLATE_2(voltage_min, "in%d_min", S_IRUGO, show_voltage_value, NULL, 0, 1);
+SENSOR_TEMPLATE_2(voltage_max, "in%d_max", S_IRUGO, show_voltage_value, NULL, 0, 2);
 
 static struct sensor_device_template *nct6687_attributes_voltage_template[] = {
 	&sensor_dev_template_voltage_label,
@@ -544,21 +604,12 @@ static ssize_t show_fan_label(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%s\n", nct6687_fan_label[sattr->index]);
 }
 
-static ssize_t show_fan(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t show_fan_value(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
 	struct nct6687_data *data = nct6687_update_device(dev);
 
-	return sprintf(buf, "%d\n", data->rpm[sattr->index]);
-}
-
-static ssize_t show_fan_min(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct nct6687_data *data = nct6687_update_device(dev);
-	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
-	int nr = sattr->index;
-
-	return sprintf(buf, "%d\n", data->fan_min[nr]);
+	return sprintf(buf, "%d\n", data->rpm[sattr->index][sattr->nr]);
 }
 
 static umode_t nct6687_fan_is_visible(struct kobject *kobj, struct attribute *attr, int index)
@@ -566,9 +617,10 @@ static umode_t nct6687_fan_is_visible(struct kobject *kobj, struct attribute *at
 	return attr->mode;
 }
 
-SENSOR_TEMPLATE(fan_input, "fan%d_input", S_IRUGO, show_fan, NULL, 0);
 SENSOR_TEMPLATE(fan_label, "fan%d_label", S_IRUGO, show_fan_label, NULL, 0);
-//SENSOR_TEMPLATE(fan_min, "fan%d_min", S_IRUGO, show_fan_min, NULL, 0);
+SENSOR_TEMPLATE_2(fan_input, "fan%d_input", S_IRUGO, show_fan_value, NULL, 0, 0);
+SENSOR_TEMPLATE_2(fan_min, "fan%d_min", S_IRUGO, show_fan_value, NULL, 0, 1);
+SENSOR_TEMPLATE_2(fan_max, "fan%d_max", S_IRUGO, show_fan_value, NULL, 0, 2);
 
 /*
  * nct6687_fan_is_visible uses the index into the following array
@@ -576,9 +628,10 @@ SENSOR_TEMPLATE(fan_label, "fan%d_label", S_IRUGO, show_fan_label, NULL, 0);
  * Any change in order or content must be matched.
  */
 static struct sensor_device_template *nct6687_attributes_fan_template[] = {
-	&sensor_dev_template_fan_input,
 	&sensor_dev_template_fan_label,
-//	&sensor_dev_template_fan_min,
+	&sensor_dev_template_fan_input,
+	&sensor_dev_template_fan_min,
+	&sensor_dev_template_fan_max,
 	NULL,
 };
 
@@ -597,11 +650,10 @@ static ssize_t show_temperature_label(struct device *dev, struct device_attribut
 
 static ssize_t show_temperature_value(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
 	struct nct6687_data *data = nct6687_update_device(dev);
-	int index = sattr->index;
 
-	return sprintf(buf, "%d\n", data->temperature[index]);
+	return sprintf(buf, "%d\n", data->temperature[sattr->index][sattr->nr]);
 }
 
 static umode_t nct6687_temp_is_visible(struct kobject *kobj, struct attribute *attr, int index)
@@ -609,8 +661,10 @@ static umode_t nct6687_temp_is_visible(struct kobject *kobj, struct attribute *a
 	return attr->mode;
 }
 
-SENSOR_TEMPLATE(temp_input, "temp%d_input", S_IRUGO, show_temperature_value, NULL, 0);
 SENSOR_TEMPLATE(temp_label, "temp%d_label", S_IRUGO, show_temperature_label, NULL, 0);
+SENSOR_TEMPLATE_2(temp_input, "temp%d_input", S_IRUGO, show_temperature_value, NULL, 0, 0);
+SENSOR_TEMPLATE_2(temp_min, "temp%d_min", S_IRUGO, show_temperature_value, NULL, 0, 1);
+SENSOR_TEMPLATE_2(temp_max, "temp%d_max", S_IRUGO, show_temperature_value, NULL, 0, 2);
 
 /*
  * nct6687_temp_is_visible uses the index into the following array
@@ -620,6 +674,8 @@ SENSOR_TEMPLATE(temp_label, "temp%d_label", S_IRUGO, show_temperature_label, NUL
 static struct sensor_device_template *nct6687_attributes_temp_template[] = {
 	&sensor_dev_template_temp_input,
 	&sensor_dev_template_temp_label,
+	&sensor_dev_template_temp_min,
+	&sensor_dev_template_temp_max,
 	NULL,
 };
 
@@ -711,18 +767,7 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 
 static umode_t nct6687_pwm_is_visible(struct kobject *kobj, struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct nct6687_data *data = dev_get_drvdata(dev);
-	int pwm = index; /* pwm index */
-
-	if (!(data->have_pwm & (1 << pwm)))
-		return 0;
-
-	/* Only update pwm values for Mitac boards */
-	//if (data->customer_id == NCT6687_CUSTOMER_ID_MITAC)
 	return attr->mode | S_IWUSR;
-
-	//return attr->mode;
 }
 
 static struct sensor_device_template *nct6687_attributes_pwm_template[] = {
@@ -770,27 +815,36 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 	{
 		u16 reg = nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE(i));
 		u16 bitMask = 0x01 << i;
+		u16 rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
+		data->rpm[0][i] = rpm;
+		data->rpm[1][i] = rpm;
+		data->rpm[2][i] = rpm;
 		data->_initialFanControlMode[i] = (u8)(reg & bitMask);
-		data->rpm[i] = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
-		data->fan_min[i] = nct6687_read16(data, NCT6687_REG_FAN_MIN(i));
 		data->_restoreDefaultFanControlRequired[i] = false;
 
-		pr_debug("nct6687_setup_fans[%d], %s - addr=%04X, ctrl=%04X, rpm=%d, fan min=%d, _initialFanControlMode=%d\n", i, nct6687_fan_label[i], NCT6687_REG_FAN_CTRL_MODE(i), reg, data->rpm[i], data->fan_min[i], data->_initialFanControlMode[i]);
+		pr_debug("nct6687_setup_fans[%d], %s - addr=%04X, ctrl=%04X, rpm=%d, _initialFanControlMode=%d\n", i, nct6687_fan_label[i], NCT6687_REG_FAN_CTRL_MODE(i), reg, rpm, data->_initialFanControlMode[i]);
 	}
 }
 
-static void nct6687_setup_pwm(struct nct6687_data *data)
+static void nct6687_setup_voltages(struct nct6687_data *data)
 {
-	int i;
+	int index;
 
-	for (i = 0; i < NCT6687_NUM_REG_PWM; i++)
+	/* Measured voltages and limits */
+	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++)
 	{
-		data->have_pwm |= 1 << i;
-		data->_initialFanPwmCommand[i] = nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(i));
-		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
+		s16 reg = nct6687_voltage_definition[index].reg;
+		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
+		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
+		s16 value = low + high;
+		s16 voltage = value * nct6687_voltage_definition[index].multiplier;
 
-		pr_debug("nct6687_setup_pwm[%d], addr=%04X, pwm=%d, _initialFanPwmCommand=%d\n", i, NCT6687_REG_FAN_PWM_COMMAND(i), data->pwm[i], data->_initialFanPwmCommand[i]);
+		data->voltage[0][index] = voltage;
+		data->voltage[1][index] = voltage;
+		data->voltage[2][index] = voltage;
+
+		pr_debug("nct6687_setup_voltages[%d], %s, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_definition[index].label, NCT6687_REG_VOLTAGE(index), value, voltage);
 	}
 }
 
@@ -802,43 +856,26 @@ static void nct6687_setup_temperatures(struct nct6687_data *data)
 	{
 		s32 value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
 		s32 half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
+		s32 temperature = (value * 1000) + (5 * half);
 
-		data->temperature[i] = (value * 1000) + (5 * half);
+		data->temperature[0][i] = temperature;
+		data->temperature[1][i] = temperature;
+		data->temperature[2][i] = temperature;
 
-		pr_debug("nct6687_setup_temperatures[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n", i, NCT6687_REG_TEMP(i), value, half, data->temperature[i]);
+		pr_debug("nct6687_setup_temperatures[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n", i, NCT6687_REG_TEMP(i), value, half, temperature);
 	}
 }
 
-static void nct6687_setup_voltage(struct nct6687_data *data)
+static void nct6687_setup_pwm(struct nct6687_data *data)
 {
 	int i;
 
-	/* Measured voltages and limits */
-	for (i = 0; i < NCT6687_NUM_REG_VOLTAGE; i++)
+	for (i = 0; i < NCT6687_NUM_REG_PWM; i++)
 	{
-		s16 high = nct6687_read(data, NCT6687_REG_TEMP(i)) * 16;
-		s16 low = ((u16)nct6687_read(data, NCT6687_REG_TEMP(i) + 1)) >> 4;
-		s16 value = low + high;
+		data->_initialFanPwmCommand[i] = nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(i));
+		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
 
-		switch (i)
-		{
-		case 0:
-			value *= 12;
-			break;
-		case 1:
-			value *= 5;
-			break;
-		case 4:
-			value *= 2;
-			break;
-
-		default:
-			break;
-		}
-
-		data->voltage[i] = value;
-
-		pr_debug("nct6687_setup_voltage[%d], addr=0x%04x, voltage=%d\n", i, NCT6687_REG_TEMP(i), value);
+		pr_debug("nct6687_setup_pwm[%d], addr=%04X, pwm=%d, _initialFanPwmCommand=%d\n", i, NCT6687_REG_FAN_PWM_COMMAND(i), data->pwm[i], data->_initialFanPwmCommand[i]);
 	}
 }
 
@@ -893,19 +930,16 @@ static int nct6687_probe(struct platform_device *pdev)
 	nct6687_setup_fans(data);
 	nct6687_setup_pwm(data);
 	nct6687_setup_temperatures(data);
-	nct6687_setup_voltage(data);
+	nct6687_setup_voltages(data);
 
 	/* Register sysfs hooks */
 
-	if (data->have_pwm)
-	{
-		group = nct6687_create_attr_group(dev, &nct6687_pwm_template_group, fls(data->have_pwm));
+	group = nct6687_create_attr_group(dev, &nct6687_pwm_template_group, NCT6687_NUM_REG_FAN);
 
-		if (IS_ERR(group))
-			return PTR_ERR(group);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
 
-		data->groups[groups++] = group;
-	}
+	data->groups[groups++] = group;
 
 	group = nct6687_create_attr_group(dev, &nct6687_voltage_template_group, NCT6687_NUM_REG_VOLTAGE);
 
