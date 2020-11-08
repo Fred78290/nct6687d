@@ -391,31 +391,6 @@ static struct attribute_group *nct6687_create_attr_group(struct device *dev, con
 	return group;
 }
 
-/* LSB is 16 mV, except for the following sources, where it is 32 mV */
-#define MON_SRC_VCC 0x60
-#define MON_SRC_VSB 0x61
-#define MON_SRC_AVSB 0x62
-#define MON_SRC_VBAT 0x64
-
-static inline long in_from_reg(u16 reg, u8 src)
-{
-	int scale = 16;
-
-	if (src == MON_SRC_VCC || src == MON_SRC_VSB || src == MON_SRC_AVSB || src == MON_SRC_VBAT)
-		scale <<= 1;
-	return reg * scale;
-}
-
-static inline u16 in_to_reg(u32 val, u8 src)
-{
-	int scale = 16;
-
-	if (src == MON_SRC_VCC || src == MON_SRC_VSB || src == MON_SRC_AVSB || src == MON_SRC_VBAT)
-		scale <<= 1;
-
-	return clamp_val(DIV_ROUND_CLOSEST(val, scale), 0, 127);
-}
-
 static u16 nct6687_read(struct nct6687_data *data, u16 address)
 {
 	u8 page = (u8)(address >> 8);
