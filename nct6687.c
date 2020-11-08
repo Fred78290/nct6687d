@@ -230,7 +230,6 @@ struct nct6687_data
 	s32 temperature[NCT6687_NUM_REG_TEMP];
 
 	/* Fan attribute values */
-	u16 have_fan; /* some fan inputs can be disabled */
 	u16 rpm[NCT6687_NUM_REG_FAN];
 	u8 _initialFanControlMode[NCT6687_NUM_REG_FAN];
 	u8 _initialFanPwmCommand[NCT6687_NUM_REG_FAN];
@@ -481,9 +480,6 @@ static struct nct6687_data *nct6687_update_device(struct device *dev)
 		/* Measured fan speeds and limits */
 		for (i = 0; i < ARRAY_SIZE(data->rpm); i++)
 		{
-			if (!(data->have_fan & (1 << i)))
-				continue;
-
 			data->rpm[i] = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 			data->fan_min[i] = nct6687_read16(data, NCT6687_REG_FAN_MIN(i));
 		}
@@ -541,6 +537,13 @@ static const struct sensor_template_group nct6687_voltage_template_group = {
 	.is_visible = nct6687_voltage_is_visible,
 };
 
+static ssize_t show_fan_label(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
+
+	return sprintf(buf, "%s\n", nct6687_fan_label[sattr->index]);
+}
+
 static ssize_t show_fan(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
@@ -560,17 +563,11 @@ static ssize_t show_fan_min(struct device *dev, struct device_attribute *attr, c
 
 static umode_t nct6687_fan_is_visible(struct kobject *kobj, struct attribute *attr, int index)
 {
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct nct6687_data *data = dev_get_drvdata(dev);
-	int fan = index; /* fan index */
-
-	if (!(data->have_fan & (1 << fan)))
-		return 0;
-
 	return attr->mode;
 }
 
 SENSOR_TEMPLATE(fan_input, "fan%d_input", S_IRUGO, show_fan, NULL, 0);
+SENSOR_TEMPLATE(fan_label, "fan%d_label", S_IRUGO, show_fan_label, NULL, 0);
 //SENSOR_TEMPLATE(fan_min, "fan%d_min", S_IRUGO, show_fan_min, NULL, 0);
 
 /*
@@ -580,6 +577,7 @@ SENSOR_TEMPLATE(fan_input, "fan%d_input", S_IRUGO, show_fan, NULL, 0);
  */
 static struct sensor_device_template *nct6687_attributes_fan_template[] = {
 	&sensor_dev_template_fan_input,
+	&sensor_dev_template_fan_label,
 //	&sensor_dev_template_fan_min,
 	NULL,
 };
@@ -778,10 +776,7 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 		data->fan_min[i] = nct6687_read16(data, NCT6687_REG_FAN_MIN(i));
 		data->_restoreDefaultFanControlRequired[i] = false;
 
-		if (data->rpm[i])
-			data->have_fan |= 1 << i;
-
-		pr_debug("nct6687_setup_fans[%d], addr=%04X, ctrl=%04X, rpm=%d, fan min=%d, _initialFanControlMode=%d\n", i, NCT6687_REG_FAN_CTRL_MODE(i), reg, data->rpm[i], data->fan_min[i], data->_initialFanControlMode[i]);
+		pr_debug("nct6687_setup_fans[%d], %s - addr=%04X, ctrl=%04X, rpm=%d, fan min=%d, _initialFanControlMode=%d\n", i, nct6687_fan_label[i], NCT6687_REG_FAN_CTRL_MODE(i), reg, data->rpm[i], data->fan_min[i], data->_initialFanControlMode[i]);
 	}
 }
 
@@ -919,15 +914,12 @@ static int nct6687_probe(struct platform_device *pdev)
 
 	data->groups[groups++] = group;
 
-	if (data->have_fan)
-	{
-		group = nct6687_create_attr_group(dev, &nct6687_fan_template_group, fls(data->have_fan));
+	group = nct6687_create_attr_group(dev, &nct6687_fan_template_group, NCT6687_NUM_REG_FAN);
 
-		if (IS_ERR(group))
-			return PTR_ERR(group);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
 
-		data->groups[groups++] = group;
-	}
+	data->groups[groups++] = group;
 
 	group = nct6687_create_attr_group(dev, &nct6687_temp_template_group, NCT6687_NUM_REG_TEMP);
 
