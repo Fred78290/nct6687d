@@ -520,11 +520,15 @@ static void nct6687_update_fans(struct nct6687_data *data)
 		data->rpm[0][i] = rmp;
 		data->rpm[1][i] = MIN(rmp, data->rpm[1][i]);
 		data->rpm[2][i] = MAX(rmp, data->rpm[2][i]);
+
+		pr_debug("nct6687_update_fans[%d], rpm=%d min=%d, max=%d", i, rmp, data->rpm[1][i], data->rpm[2][i]);
 	}
 
 	for (i = 0; i < NCT6687_NUM_REG_PWM; i++)
 	{
 		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
+
+		pr_debug("nct6687_update_fans[%d], pwm=%d", i, data->pwm[i]);
 	}
 }
 
