@@ -513,7 +513,7 @@ static void nct6687_update_fans(struct nct6687_data *data)
 {
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(data->rpm); i++)
+	for (i = 0; i < NCT6687_NUM_REG_FAN; i++)
 	{
 		s16 rmp = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
