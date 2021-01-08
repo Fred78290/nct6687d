@@ -19,6 +19,7 @@
  * Notes:
  *	(1) Total number of voltage and 9 displayed.
  */
+#define DEBUG
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/acpi.h>
@@ -123,12 +124,16 @@ static inline void superio_exit(int ioreg)
 
 /* Common and NCT6687 specific data */
 
+#define NCT6687_NUM_REG_MON 32
+
 #define NCT6687_NUM_REG_VOLTAGE (sizeof(nct6687_voltage_definition) / sizeof(struct voltage_reg))
 #define NCT6687_NUM_REG_TEMP 7
 #define NCT6687_NUM_REG_FAN 8
 #define NCT6687_NUM_REG_PWM 8
 
-#define NCT6687_REG_TEMP(x) (0x100 + (x)*2)
+#define MON_VOLTAGE_START 0x60
+
+#define NCT6687_REG_MON(x) (0x100 + (x)*2)
 #define NCT6687_REG_VOLTAGE(x) (0x120 + (x)*2)
 #define NCT6687_REG_FAN_RPM(x) (0x140 + (x)*2)
 #define NCT6687_REG_PWM(x) (0x160 + (x))
@@ -178,59 +183,101 @@ struct voltage_reg
 };
 
 static struct voltage_reg nct6687_voltage_definition[] = {
-	// +12V
+	// [0] +12V
 	{
 		.reg = 0,
 		.multiplier = 12,
 		.label = "+12V",
 	},
-	// + 5V
+	// [1] + 5V
 	{
 		.reg = 1,
 		.multiplier = 5,
 		.label = "+5V",
 	},
-	// +3.3V
+	// [2] +3.3V
 	{
 		.reg = 11,
 		.multiplier = 1,
 		.label = "+3.3V",
 	},
-	// CPU SOC
+	// [3] CPU SOC
 	{
 		.reg = 2,
 		.multiplier = 1,
 		.label = "CPU Soc",
 	},
-	// CPU Vcore
+	// [4] CPU Vcore
 	{
 		.reg = 4,
 		.multiplier = 1,
 		.label = "CPU Vcore",
 	},
-	// CPU 1P8
+	// [5] CPU 1P8
 	{
 		.reg = 9,
 		.multiplier = 1,
 		.label = "CPU 1P8",
 	},
-	// CPU VDDP
+	// [6] CPU VDDP
 	{
 		.reg = 10,
 		.multiplier = 1,
 		.label = "CPU VDDP",
 	},
-	// DRAM
+	// [7] DRAM
 	{
 		.reg = 3,
 		.multiplier = 2,
 		.label = "DRAM",
 	},
-	// DRAM
+	// [8] Chipset
 	{
 		.reg = 5,
 		.multiplier = 1,
 		.label = "Chipset",
+	},
+	// [9] Voltage 1
+	{
+		.reg = 6,
+		.multiplier = 1,
+		.label = "Voltage #1",
+	},
+	// [10] Voltage 2
+	{
+		.reg = 7,
+		.multiplier = 1,
+		.label = "Voltage #2",
+	},
+	// [11] Voltage 3
+	{
+		.reg = 8,
+		.multiplier = 1,
+		.label = "Voltage #3",
+	},
+	// [12] Voltage 4
+	{
+		.reg = 12,
+		.multiplier = 1,
+		.label = "Voltage #4",
+	},
+	// [13] Voltage 5
+	{
+		.reg = 13,
+		.multiplier = 1,
+		.label = "Voltage #5",
+	},
+	// [14] Voltage 6
+	{
+		.reg = 14,
+		.multiplier = 1,
+		.label = "Voltage #6",
+	},
+	// [15] Voltage 7
+	{
+		.reg = 15,
+		.multiplier = 1,
+		.label = "Voltage #7",
 	},
 };
 
@@ -272,9 +319,15 @@ struct nct6687_data
 	unsigned long last_updated; /* In jiffies */
 
 	/* Voltage values */
+	u8 voltage_num; /* number of voltage attributes */
+	u8 voltage_index[NCT6687_NUM_REG_MON];
+	u8 voltage_src[NCT6687_NUM_REG_MON];
 	s16 voltage[3][NCT6687_NUM_REG_VOLTAGE]; // 0 = current 1 = min 2 = max
 
 	/* Temperature values */
+	int temp_num; /* number of temperature attributes */
+	u8 temp_index[NCT6687_NUM_REG_MON];
+	u8 temp_src[NCT6687_NUM_REG_MON];
 	s32 temperature[3][NCT6687_NUM_REG_TEMP]; // 0 = current 1 = min 2 = max
 
 	/* Fan attribute values */
@@ -467,27 +520,91 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	outb_p(value, data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
 }
 
+static s32 nct6687_get_temperature(struct nct6687_data *data, u16 address)
+{
+	s32 value = (char)nct6687_read(data, address);
+	s32 half = (nct6687_read(data, address + 1) >> 7) & 0x1;
+	s32 temperature = (value * 1000) + (5 * half);
+
+	return temperature;
+}
+
+static int get_temp_reg(struct nct6687_data *data, int nr, int index)
+{
+	int ch = data->temp_index[index];
+	int reg = -EINVAL;
+
+	switch (nr)
+	{
+	default:
+	case 0: /* min */
+		reg = NCT6687_REG_MON_LOW(ch);
+		break;
+	case 1: /* max */
+		reg = NCT6687_REG_TEMP_MAX(ch);
+		break;
+	case 2: /* hyst */
+		reg = NCT6687_REG_TEMP_HYST(ch);
+		break;
+	case 3: /* crit */
+		reg = NCT6687_REG_MON_HIGH(ch);
+		break;
+	}
+
+	return reg;
+}
+
 static void nct6687_update_temperatures(struct nct6687_data *data)
 {
-	int i;
+	int i, j;
 
 	for (i = 0; i < NCT6687_NUM_REG_TEMP; i++)
 	{
-		s32 value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
-		s32 half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
-		s32 temperature = (value * 1000) + (5 * half);
+		s32 temperature = nct6687_get_temperature(data, NCT6687_REG_MON(i));
+		s32 values[4];
 
 		data->temperature[0][i] = temperature;
 		data->temperature[1][i] = MIN(temperature, data->temperature[1][i]);
 		data->temperature[2][i] = MAX(temperature, data->temperature[2][i]);
 
-		pr_debug("nct6687_update_temperatures[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n", i, NCT6687_REG_TEMP(i), value, half, temperature);
+		for (j = 0; j < 4; j++)
+		{
+			int reg = get_temp_reg(data, j, i);
+
+			values[j] = (reg >= 0) ? nct6687_read(data, reg) : 0;
+		}
+
+		pr_debug("nct6687_update_temperatures[%d]], addr=%04X, temperature=%d, values[0]=%d, values[1]=%d, values[2]=%d, values[3]=%d", i, NCT6687_REG_MON(i),
+				 temperature, values[0], values[1], values[2], values[3]);
 	}
+}
+
+static int get_voltage_reg(struct nct6687_data *data, int nr, int index)
+{
+	int ch = data->voltage_index[index];
+	int reg = -EINVAL;
+
+	switch (nr)
+	{
+	case 0:
+		reg = NCT6687_REG_MON(ch);
+		break;
+	case 1:
+		reg = NCT6687_REG_MON_LOW(ch);
+		break;
+	case 2:
+		reg = NCT6687_REG_MON_HIGH(ch);
+		break;
+	default:
+		break;
+	}
+
+	return reg;
 }
 
 static void nct6687_update_voltage(struct nct6687_data *data)
 {
-	int index;
+	int index, j;
 
 	/* Measured voltages and limits */
 	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++)
@@ -497,12 +614,21 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
 		s16 voltage = value * nct6687_voltage_definition[index].multiplier;
+		s16 values[4];
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = MIN(voltage, data->voltage[1][index]);
 		data->voltage[2][index] = MAX(voltage, data->voltage[2][index]);
 
-		pr_debug("nct6687_update_voltage[%d], %s, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_definition[index].label, NCT6687_REG_VOLTAGE(index), value, voltage);
+		for (j = 0; j < 4; j++)
+		{
+			int in_reg = get_voltage_reg(data, j, reg);
+
+			values[j] = (in_reg >= 0) ? (nct6687_read(data, in_reg) * 16) + (((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(in_reg) + 1)) >> 4) : 0;
+		}
+
+		pr_debug("nct6687_update_voltage[%d], %s, addr=0x%04x, value=%d, voltage=%d, values[0]=%d, values[1]=%d, values[2]=%d, values[3]=%d", index, nct6687_voltage_definition[index].label, NCT6687_REG_VOLTAGE(reg), value,
+				 voltage, values[0], values[1], values[2], values[3]);
 	}
 
 	pr_debug("nct6687_update_voltage\n");
@@ -857,15 +983,15 @@ static void nct6687_setup_temperatures(struct nct6687_data *data)
 
 	for (i = 0; i < NCT6687_NUM_REG_TEMP; i++)
 	{
-		s32 value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
-		s32 half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
+		s32 value = (char)nct6687_read(data, NCT6687_REG_MON(i));
+		s32 half = (nct6687_read(data, NCT6687_REG_MON(i) + 1) >> 7) & 0x1;
 		s32 temperature = (value * 1000) + (5 * half);
 
 		data->temperature[0][i] = temperature;
 		data->temperature[1][i] = temperature;
 		data->temperature[2][i] = temperature;
 
-		pr_debug("nct6687_setup_temperatures[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n", i, NCT6687_REG_TEMP(i), value, half, temperature);
+		pr_debug("nct6687_setup_temperatures[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n", i, NCT6687_REG_MON(i), value, half, temperature);
 	}
 }
 
@@ -900,6 +1026,57 @@ static int nct6687_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/*
+ * Translation from monitoring register to temperature and voltage attributes
+ * ==========================================================================
+ *
+ * There are a total of 32 monitoring registers. Each can be assigned to either
+ * a temperature or voltage monitoring source.
+ * NCT6687_REG_MON_CFG(x) defines assignment for each monitoring source.
+ *
+ * Temperature and voltage attribute mapping is determined by walking through
+ * the NCT6687_REG_MON_CFG registers. If the assigned source is
+ * a temperature, temp_index[n] is set to the monitor register index, and
+ * temp_src[n] is set to the temperature source. If the assigned source is
+ * a voltage, the respective values are stored in voltage_index[] and voltage_src[],
+ * respectively.
+ */
+
+static void nct6687_setup_sensors(struct nct6687_data *data)
+{
+	u8 reg;
+	int i;
+
+	data->temp_num = 0;
+	data->voltage_num = 0;
+
+	for (i = 0; i < NCT6687_NUM_REG_MON; i++)
+	{
+		reg = nct6687_read(data, NCT6687_REG_MON_CFG(i)) & 0x7f;
+
+		if (reg < MON_VOLTAGE_START)
+			pr_debug("nct6687_setup_sensor[%d] - temp reg=%x", i, reg);
+		else
+			pr_debug("nct6687_setup_sensor[%d] - voltage reg=%x", i, reg);
+
+		if (reg > 0)
+		{
+			if (reg < MON_VOLTAGE_START)
+			{
+				data->temp_index[data->temp_num] = i;
+				data->temp_src[data->temp_num] = reg;
+				data->temp_num++;
+			}
+			else
+			{
+				data->voltage_index[data->voltage_num] = i;
+				data->voltage_src[data->voltage_num] = reg;
+				data->voltage_num++;
+			}
+		}
+	}
+}
+
 static int nct6687_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -930,6 +1107,7 @@ static int nct6687_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, data);
 
 	nct6687_init_device(data);
+	nct6687_setup_sensors(data);
 	nct6687_setup_fans(data);
 	nct6687_setup_pwm(data);
 	nct6687_setup_temperatures(data);
@@ -1192,6 +1370,8 @@ static void __exit sensors_nct6687_exit(void)
 	}
 
 	platform_driver_unregister(&nct6687_driver);
+
+	pr_debug("Unload driver");
 }
 
 MODULE_AUTHOR("Frederic Boltz <frederic.boltz@gmail.com>");
