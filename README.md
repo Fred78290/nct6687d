@@ -55,6 +55,14 @@ PCIe x1:        +32.0°C  (low  = +32.0°C, high = +32.0°C)
 M2_1:            +0.0°C  (low  =  +0.0°C, high =  +0.0°C)
 ```
 
+## Load(prob) Sensors on boot
+
+To make it loaded after system boots
+
+Just add nct6687 into /etc/modules
+
+`sudo sh -c 'echo "nct6687" >> /etc/modules'`
+
 ## Gnome sensors extensions
 
 ![Fan](./images/fan.png) ![Voltage](./images/voltage.png)
