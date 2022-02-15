@@ -19,6 +19,7 @@
  * Notes:
  *	(1) Total number of voltage and 9 displayed.
  */
+#define DEBUG 1
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/acpi.h>
@@ -70,7 +71,8 @@ static const char *const nct6687_chip_names[] = {
 #define SIO_REG_ENABLE 0x30		 /* Logical device enable */
 #define SIO_REG_ADDR 0x60		 /* Logical device address (2 bytes) */
 
-#define SIO_NCT6687_ID 0xd592
+#define SIO_NCT6687_ID 0xd451 // 0xd592
+#define SIO_NCT6687D_ID 0xd592
 
 static inline void superio_outb(int ioreg, int reg, int val)
 {
@@ -1034,7 +1036,9 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 
 	val = (superio_inb(sioaddr, SIO_REG_DEVID) << 8) | superio_inb(sioaddr, SIO_REG_DEVREVISION);
 
-	if (val == SIO_NCT6687_ID)
+	pr_debug("found chip ID: 0x%04x\n", val);
+
+	if (val == SIO_NCT6687_ID || val == SIO_NCT6687D_ID)
 	{
 		sio_data->kind = nct6687;
 	}

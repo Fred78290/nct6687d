@@ -69,11 +69,18 @@ Just add nct6687 into /etc/modules
 ![Fan](./images/fan.png) ![Voltage](./images/voltage.png)
 ## Tested
 
-This module was tested on Ubuntu 20.04 with [Linux Kernel 5.8.18-050818-generic](https://kernel.ubuntu.com/~kernel-ppa/mainline/v5.8.18/) on motherboard [MAG-B550-TOMAHAWK](https://www.msi.com//Motherboard/MAG-B550-TOMAHAWK) running an [AMD 3900X](https://www.amd.com/en/products/cpu/amd-ryzen-9-3900x)
+This module was tested on Ubuntu 20.04 with all kernel availble on motherboard [MAG-B550-TOMAHAWK](https://www.msi.com//Motherboard/MAG-B550-TOMAHAWK) running an [AMD 3900X/AMD 5900X](https://www.amd.com/en/products/cpu/amd-ryzen-9-3900x)
 
-## TODO
+## Other motherboard supported
+
+- Many people have reported compatibility with MB having h410M & H510M chipset from some manufacturer. See issue report.
+
+## CHANGELOG
+
+- Add support for MSI B460M Bazooka having NCT6687 with another device ID
+
+## VERIFIED
 
 **1. Fan speed control**
 
-- Changing fan speed and restore to default value not tested.
-- Becareful probably fan speed could down to 0 RPM
+- Changing fan speed was tested succesfuly by users, see reported issue.
