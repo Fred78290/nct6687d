@@ -1,0 +1,11 @@
+Source: nct6687d-dkms
+Section: kernel
+Priority: optional
+Maintainer: Frederic BOLTZ <frederic.boltz@gmail.com>
+Build-Depends: debhelper, dkms
+Homepage: https://github.com/Fred78290/nct6687d/
+
+Package: nct6687d-dkms
+Architecture: all
+Depends: dkms, ${misc:Depends}
+Description: Nuvoton NCT6687-R driver (DKMS version)
