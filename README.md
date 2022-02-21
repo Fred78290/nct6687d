@@ -35,7 +35,7 @@ apt install -y debhelper dkms
 
 ```shell
 git clone https://github.com/Fred78290/nct6687d
-cd nct 6687d
+cd nct6687d
 ```
 
 3. Build package
