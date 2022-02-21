@@ -23,6 +23,33 @@ Clone this repository and go to source directory, just run make install. During 
 make install
 ```
 
+## Deb package
+
+1. Prerequisites
+
+```shell
+apt install -y debhelper dkms
+```
+
+2. Clone this repository
+
+```shell
+git clone https://github.com/Fred78290/nct6687d
+cd nct6687d
+```
+
+3. Build package
+
+```shell
+dpkg-buildpackage -b -rfakeroot -us -uc
+```
+
+4. Install package
+
+```shell
+dpkg -i ../nct6687d-dkms_*.deb
+```
+
 ## Sensors
 
 By running the command sensors, you got this output
