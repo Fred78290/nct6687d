@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+%:
+	dh $@ --parallel --with dkms
+
+override_dh_install:
+	find . -maxdepth 1 -type f -exec dh_install {} usr/src/nct6687d-$(DEB_VERSION) \;
+
+override_dh_dkms:
+	dh_dkms -V $(DEB_VERSION)
+
+override_dh_fixperms:
+	dh_fixperms
+	find debian/nct6687d-dkms/usr/src -type f -exec chmod -x {} \;
+
+# Nothing to configure, build or auto-install
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_test:
+override_dh_auto_install:
+override_dh_auto_clean:

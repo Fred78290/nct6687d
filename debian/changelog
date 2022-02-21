@@ -1,0 +1,35 @@
+nct6687d-dkms (20220215) unstable; urgency=low
+
+  * Merge pull request #21 from Fred78290/nct6687d
+  * Update README
+  * Add suport for NCT6687D with ID 0xD592 found on MSI B460M bazooka
+  * FIX: operator syntax & make simpler (rm -rf/mkdir -p are always silencious)
+  * .gitignore: target directory per kernel version
+  * Merge pull request #20 from discover02/patch-1
+  * Bug(s) fixed
+  * Merge pull request #19 from discover02/patch-1
+  * New Makefile
+  * Merge pull request #16 from vesrah/main
+  * Fix "No rule to make target 'arch/x86/tools/relocs_32.c'" error on make install
+  * Update README
+  * Merge pull request #10 from msonowal/patch-1
+  * added newbie instructions for loading extension on boot
+  * Update CHANGELOG
+  * FEAT: Add debug trace
+  * FIX: Issue #2
+  * FIX: Remove DEBUG trace
+  * Update README.md
+  * Update README
+  * Update README
+  * FEAT: Add voltage support and min max values for temp & fan
+  * Add Change log
+  * Update README
+  * FEAT: Display fans label
+  * Typo, rename in to voltage
+  * Typo
+  * Remove unused
+  * Add sources
+  * Initial commit
+
+ -- Frederic BOLTZ <frederic.boltz@gmail.com>  Tue, 15 Feb 2022 23:21:48 +0100
+

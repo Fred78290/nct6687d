@@ -14,3 +14,8 @@ nct6687.mod.o
 nct6687.o
 .vscode/
 5.1*/
+
+debian/nct6687d-dkms*
+debian/.debhelper
+debian/debhelper-build-stamp
+debian/files
