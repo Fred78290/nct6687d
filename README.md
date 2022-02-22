@@ -41,7 +41,7 @@ cd nct6687d
 3. Build package
 
 ```shell
-dpkg-buildpackage -b -rfakeroot -us -uc
+make deb
 ```
 
 4. Install package
