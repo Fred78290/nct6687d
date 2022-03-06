@@ -19,7 +19,7 @@
  * Notes:
  *	(1) Total number of voltage and 9 displayed.
  */
-#define DEBUG 1
+// #define DEBUG 1
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/acpi.h>

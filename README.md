@@ -23,6 +23,12 @@ Clone this repository and go to source directory, just run make install. During 
 make install
 ```
 
+If you need debug messages, please set `EXTRA_CFLAGS=-DDEBUG`
+
+```shell
+make install EXTRA_CFLAGS=-DDEBUG
+```
+
 ## Deb package
 
 1. Prerequisites
