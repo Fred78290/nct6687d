@@ -8,53 +8,53 @@ This kernel module permit to recognize the chipset Nuvoton NCT6687-R in lm-senso
 This sensor is present on some B550 motherboard such as MSI or ASUS.
 
 The implementation is minimalist and was done by reverse coding of Windows 10 source code from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+<br><br>
 
 ## Installation
+#### Dependencies:
+- Ubuntu/Debian:
+	 ```apt-get install build-essential linux-headers-$(uname -r) dkms```
+- Fedora/CentOS/RHEL:
+	```yum install make automake gcc gcc-c++ kernel-devel kernel-headers dkms```
+- ArchLinux:
+	 ```pacman -S make automake linux-firmware linux-headers dkms base-devel```
+<br>
 
-To install this module, you need a buid environment. Exemple for Ubuntu
-
+### Build with DKMS
 ```shell
-apt-get install build-essential linux-headers-`uname -r`
+~$ git clone https://github.com/Fred78290/nct6687d
+~$ cd nct6687d
+~$ make dkms/install
 ```
+<br>
 
-Clone this repository and go to source directory, just run make install. During install, you could be asked for your password because some commands are sudoed.
-
+### Manual build
 ```shell
-make install
+~$ git clone (this-repo)
+~$ cd nct6687d
+~$ make install
 ```
+<br>
 
-If you need debug messages, please set `EXTRA_CFLAGS=-DDEBUG`
-
+### Deb package
+- Prerequisites
 ```shell
-make install EXTRA_CFLAGS=-DDEBUG
+~$ apt install -y debhelper dkms
 ```
-
-## Deb package
-
-1. Prerequisites
-
+- Clone this repository
 ```shell
-apt install -y debhelper dkms
+~$ git clone https://github.com/Fred78290/nct6687d
+~$ cd nct6687d
 ```
-
-2. Clone this repository
-
-```shell
-git clone https://github.com/Fred78290/nct6687d
-cd nct6687d
-```
-
-3. Build package
-
+- Build package
 ```shell
 make deb
 ```
-
-4. Install package
-
+- Install package
 ```shell
 dpkg -i ../nct6687d-dkms_*.deb
 ```
+<br><br>
 
 ## Sensors
 
@@ -89,6 +89,8 @@ PCIe x1:        +32.0°C  (low  = +32.0°C, high = +32.0°C)
 M2_1:            +0.0°C  (low  =  +0.0°C, high =  +0.0°C)
 ```
 
+<br>
+
 ## Load(prob) Sensors on boot
 
 To make it loaded after system boots
@@ -97,23 +99,30 @@ Just add nct6687 into /etc/modules
 
 `sudo sh -c 'echo "nct6687" >> /etc/modules'`
 
+<br>
+
 ## Gnome sensors extensions
 
 ![Fan](./images/fan.png) ![Voltage](./images/voltage.png)
+
+<br>
+
 ## Tested
 
 This module was tested on Ubuntu 20.04 with all kernel availble on motherboard [MAG-B550-TOMAHAWK](https://www.msi.com//Motherboard/MAG-B550-TOMAHAWK) running an [AMD 3900X/AMD 5900X](https://www.amd.com/en/products/cpu/amd-ryzen-9-3900x)
 
-## Other motherboard supported
+<br>
 
-- Many people have reported compatibility with MB having h410M & H510M chipset from some manufacturer. See issue report.
+## Other motherboard supported
+- Many people have reported compatibility with MB having Intel H410M & H510M chipset from some manufacturer. See [issue](https://github.com/Fred78290/nct6687d/issues) report.
+<br>
 
 ## CHANGELOG
 
 - Add support for MSI B460M Bazooka having NCT6687 with another device ID
+<br>
 
 ## VERIFIED
-
 **1. Fan speed control**
 
 - Changing fan speed was tested succesfuly by users, see reported issue.
