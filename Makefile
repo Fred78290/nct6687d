@@ -21,7 +21,6 @@ clean:
 
 
 dkms/build:
-	echo ">>> ${curpwd}"
 	make -C /lib/modules/${kver}/build M=${curpwd} modules
 
 dkms/install:
