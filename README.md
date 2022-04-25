@@ -18,6 +18,8 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 	```yum install make automake gcc gcc-c++ kernel-devel kernel-headers dkms```
 - ArchLinux:
 	 ```pacman -S make automake linux-firmware linux-headers dkms base-devel```
+- openSUSE:
+	 ```zypper in git make gcc dkms```
 <br>
 
 ### Build with DKMS
