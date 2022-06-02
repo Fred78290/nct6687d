@@ -1039,7 +1039,7 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 
 	pr_debug("found chip ID: 0x%04x\n", val);
 
-	if (val == SIO_NCT6683D_ID || val == SIO_NCT6687_ID || val == SIO_NCT6687D_ID)
+	if (val == SIO_NCT6683D_ID || val == SIO_NCT6687_ID || val == SIO_NCT6687D_ID || force)
 	{
 		sio_data->kind = nct6687;
 	}
