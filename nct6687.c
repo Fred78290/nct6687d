@@ -14,6 +14,7 @@
  * Supports the following chips:
  *
  * Chip       #voltage   #fan    #pwm    #temp  chip ID
+ * nct6683    14(1)      8       8       7      0xc732  (partial support)
  * nct6687    14(1)      8       8       7      0xd592
  *
  * Notes:
@@ -40,6 +41,7 @@
 
 enum kinds
 {
+	nct6683,
 	nct6687
 };
 
@@ -48,10 +50,12 @@ module_param(force, bool, 0);
 MODULE_PARM_DESC(force, "Set to one to enable support for unknown vendors");
 
 static const char *const nct6687_device_names[] = {
+	"nct6683",
 	"nct6687",
 };
 
 static const char *const nct6687_chip_names[] = {
+	"NCT6683D",
 	"NCT6687D",
 };
 
@@ -71,6 +75,7 @@ static const char *const nct6687_chip_names[] = {
 #define SIO_REG_ENABLE 0x30		 /* Logical device enable */
 #define SIO_REG_ADDR 0x60		 /* Logical device address (2 bytes) */
 
+#define SIO_NCT6683D_ID 0xc732
 #define SIO_NCT6687_ID 0xd451 // 0xd592
 #define SIO_NCT6687D_ID 0xd592
 
@@ -1038,7 +1043,9 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 
 	pr_debug("found chip ID: 0x%04x\n", val);
 
-	if (val == SIO_NCT6687_ID || val == SIO_NCT6687D_ID)
+	if (val == SIO_NCT6683D_ID) {
+		sio_data->kind = nct6683;
+	} else if (val == SIO_NCT6687_ID || val == SIO_NCT6687D_ID || force)
 	{
 		sio_data->kind = nct6687;
 	}
