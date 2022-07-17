@@ -514,7 +514,7 @@ static void nct6687_update_temperatures(struct nct6687_data *data)
 	{
 		s32 value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
 		s32 half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
-		s32 temperature = (value * 1000) + (5 * half);
+		s32 temperature = (value * 1000) + (500 * half);
 
 		data->temperature[0][i] = temperature;
 		data->temperature[1][i] = MIN(temperature, data->temperature[1][i]);
