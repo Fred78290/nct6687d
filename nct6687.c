@@ -46,8 +46,13 @@ enum kinds
 };
 
 static bool force;
+static bool manual;
+
 module_param(force, bool, 0);
 MODULE_PARM_DESC(force, "Set to one to enable support for unknown vendors");
+
+module_param(manual, bool, 0);
+MODULE_PARM_DESC(manual, "Set voltage input and voltage label configured with external sensors file");
 
 static const char *const nct6687_device_names[] = {
 	"nct6683",
@@ -400,6 +405,16 @@ struct sensor_template_group
 
 static void nct6687_save_fan_control(struct nct6687_data *data, int index);
 
+static const char* nct6687_voltage_label(char* buf, int index)
+{
+	if (manual)
+		sprintf(buf, "in%d", index);
+	else
+		strcpy(buf, nct6687_voltage_definition[index].label);
+
+	return buf;
+}
+
 static struct attribute_group *nct6687_create_attr_group(struct device *dev, const struct sensor_template_group *tg, int repeat)
 {
 	struct sensor_device_attribute_2 *a2;
@@ -527,21 +542,22 @@ static void nct6687_update_temperatures(struct nct6687_data *data)
 static void nct6687_update_voltage(struct nct6687_data *data)
 {
 	int index;
+	char buf[128];
 
 	/* Measured voltages and limits */
 	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++)
 	{
-		s16 reg = nct6687_voltage_definition[index].reg;
+		s16 reg = manual ? index : nct6687_voltage_definition[index].reg;
 		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
-		s16 voltage = value * nct6687_voltage_definition[index].multiplier;
+		s16 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = MIN(voltage, data->voltage[1][index]);
 		data->voltage[2][index] = MAX(voltage, data->voltage[2][index]);
 
-		pr_debug("nct6687_update_voltage[%d], %s, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_definition[index].label, NCT6687_REG_VOLTAGE(index), value, voltage);
+		pr_debug("nct6687_update_voltage[%d], %s, reg=%d, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_label(buf, index), reg, NCT6687_REG_VOLTAGE(index), value, voltage);
 	}
 
 	pr_debug("nct6687_update_voltage\n");
@@ -603,7 +619,10 @@ static ssize_t show_voltage_label(struct device *dev, struct device_attribute *a
 {
 	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
 
-	return sprintf(buf, "%s\n", nct6687_voltage_definition[sattr->index].label);
+	if (manual)
+		return sprintf(buf, "in%d\n", sattr->index);
+	else
+		return sprintf(buf, "%s\n", nct6687_voltage_definition[sattr->index].label);
 }
 
 static ssize_t show_voltage_value(struct device *dev, struct device_attribute *attr, char *buf)
@@ -871,21 +890,22 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 static void nct6687_setup_voltages(struct nct6687_data *data)
 {
 	int index;
+	char buf[64];
 
 	/* Measured voltages and limits */
 	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++)
 	{
-		s16 reg = nct6687_voltage_definition[index].reg;
+		s16 reg = manual ? index : nct6687_voltage_definition[index].reg;
 		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
-		s16 voltage = value * nct6687_voltage_definition[index].multiplier;
+		s16 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = voltage;
 		data->voltage[2][index] = voltage;
 
-		pr_debug("nct6687_setup_voltages[%d], %s, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_definition[index].label, NCT6687_REG_VOLTAGE(index), value, voltage);
+		pr_debug("nct6687_setup_voltages[%d], %s, addr=0x%04x, value=%d, voltage=%d\n", index, nct6687_voltage_label(buf, index), NCT6687_REG_VOLTAGE(index), value, voltage);
 	}
 }
 
