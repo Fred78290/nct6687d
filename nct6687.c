@@ -233,7 +233,7 @@ static struct voltage_reg nct6687_voltage_definition[] = {
 		.multiplier = 2,
 		.label = "DRAM",
 	},
-	// DRAM
+	// Chipset
 	{
 		.reg = 5,
 		.multiplier = 1,
