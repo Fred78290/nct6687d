@@ -239,6 +239,38 @@ static struct voltage_reg nct6687_voltage_definition[] = {
 		.multiplier = 1,
 		.label = "Chipset",
 	},
+
+	// CPU SA
+	{
+		.reg = 6,
+		.multiplier = 1,
+		.label = "CPU SA",
+	},
+	// Voltage #2
+	{
+		.reg = 7,
+		.multiplier = 1,
+		.label = "Voltage #2",
+	},
+	// AVCC3
+	{
+		.reg = 8,
+		.multiplier = 1,
+		.label = "AVCC3",
+	},
+	// AVSB
+	{
+		.reg = 12,
+		.multiplier = 1,
+		.label = "AVSB",
+	},
+	// VBAT
+	{
+		.reg = 13,
+		.multiplier = 1,
+		.label = "VBat",
+	},
+
 };
 
 static const char *const nct6687_temp_label[] = {
