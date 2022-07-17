@@ -545,7 +545,6 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 	}
 
 	pr_debug("nct6687_update_voltage\n");
-	pr_debug("nct6687_update_voltage\n");
 }
 
 static void nct6687_update_fans(struct nct6687_data *data)
