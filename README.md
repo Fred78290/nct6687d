@@ -122,7 +122,56 @@ This module was tested on Ubuntu 20.04 with all kernel availble on motherboard [
 ## CHANGELOG
 
 - Add support for MSI B460M Bazooka having NCT6687 with another device ID
+- Add support to use generic voltage input without multiplier, allows sensors custom conf
 <br>
+
+## VOLTAGE MANUAL CONFIGURATION
+
+Some people report that voltage are wrong. The reason is with some motherboard, voltage sensors are not connected on the same nct6687 register.
+
+As example the **VCore** sensor is connected on the **5th** register for AMD but is connected on the **3rd** register for INTEL.
+<br>
+Also the **DIMM** sensor is connected on the **4th** register for AMD but connected to **5th** register for INTEL.
+
+To allow customize voltage configuration you must add **manual=1** parameter passed to the module at load
+
+`sudo sh -c 'echo "nct6687 manual=1" >> /etc/modules'`
+
+And use a sensors conf like this **/etc/sensors.d/B460M-7C83.conf**
+
+```
+# Micro-Star International Co., Ltd.
+# MAG B460M BAZOOKA (MS-7C83)
+
+chip "nct6687-*"
+    label in0         "+12V"
+    label in1         "+5V"
+    label in2         "VCore"
+    label in3         "Voltage #1"
+    label in4         "DIMM"
+    label in5         "CPU I/O"
+    label in6         "CPU SA"
+    label in7         "Voltage #2"
+    label in8         "+3.3V"
+    label in9         "VTT"
+    label in10        "VRef"
+    label in11        "VSB"
+    label in12        "AVSB"
+    label in13        "VBat"
+
+    ignore in3
+    ignore in7
+    ignore in9
+    ignore in10
+    ignore in13
+
+    ignore temp6
+    ignore temp7
+
+    compute in0       (@ * 12), (@ / 12)
+    compute in1       (@ * 5), (@ / 5)
+    compute in4       (@ * 2), (@ / 2)
+```
 
 ## VERIFIED
 **1. Fan speed control**

@@ -33,7 +33,7 @@ dkms/install:
 	sudo modprobe nct6687
 
 dkms/clean:
-	sudo dkms remove nct6687d/1
+	sudo dkms remove nct6687d/1 --all
 	make -C /lib/modules/${kver}/build M=${curpwd} clean
 
 
