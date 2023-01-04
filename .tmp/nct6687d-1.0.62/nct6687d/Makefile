@@ -12,12 +12,16 @@ build:
 	cp ${curpwd}/Makefile ${curpwd}/nct6687.c ${curpwd}/${kver}
 	cd ${curpwd}/${kver}
 	make -C /lib/modules/${kver}/build M=${curpwd}/${kver} modules
+
 install: build
 	sudo cp ${curpwd}/${kver}/nct6687.ko /lib/modules/${kver}/kernel/drivers/hwmon/
 	sudo depmod
 	sudo modprobe nct6687
+
 clean:
 	[ -d "${curpwd}/${kver}" ] && make -C /lib/modules/${kver}/build M=${curpwd}/${kver} clean
+
+
 
 
 akmod/build:
@@ -34,12 +38,15 @@ akmod/build:
 	sed -i "s/MAKEFILE_COMMITHASH/${commithash}/g" ${curpwd}/.tmp/rpmbuild/SPECS/*
 	rpmbuild -ba --define "_topdir ${curpwd}/.tmp/rpmbuild" ${curpwd}/.tmp/rpmbuild/SPECS/nct6687d.spec
 	rpmbuild -ba --define "_topdir ${curpwd}/.tmp/rpmbuild" ${curpwd}/.tmp/rpmbuild/SPECS/nct6687d-kmod.spec
+
 akmod/install: akmod/build
 	sudo dnf install ${curpwd}/.tmp/rpmbuild/RPMS/*/*.rpm
+	
 akmod/clean:
 	sudo dnf remove nct6687d
-	rm -rf .tmp
+
 akmod: akmod/install
+
 
 
 dkms/build:
@@ -65,7 +72,6 @@ debian/changelog: FORCE
 		> $@
 
 deb: debian/changelog
-	sudo apt install -y debhelper dkms
 	dpkg-buildpackage -b -rfakeroot -us -uc
 
 .PHONY: FORCE
