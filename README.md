@@ -1,8 +1,6 @@
 ![https://valid.x86.fr/vsb4yv](https://valid.x86.fr/cache/banner/vsb4yv-6.png)
 ![https://valid.x86.fr/20aiek](https://valid.x86.fr/cache/banner/20aiek-6.png)
-# README
-
-## NCT6687D Kernel module
+# NCT6687D Kernel module
 
 This kernel module permit to recognize the chipset Nuvoton NCT6687-R in lm-sensors package.
 This sensor is present on some B550 motherboard such as MSI or ASUS.
@@ -11,7 +9,36 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 <br><br>
 
 ## Installation
-#### Dependencies:
+### .deb package
+- Clone this repository
+```shell
+~$ git clone https://github.com/Fred78290/nct6687d
+~$ cd nct6687d
+```
+- Build package
+```shell
+~$ make deb
+```
+- Install package
+```shell
+~$ dpkg -i ../nct6687d-dkms_*.deb
+```
+<br>
+
+### .rpm package (akmod)
+- Clone this repository
+```shell
+~$ git clone https://github.com/Fred78290/nct6687d
+~$ cd nct6687d
+```
+- Build & install package
+```shell
+~$ make akmod
+```
+<br><br>
+
+## Manual Install
+### Dependencies:
 - Ubuntu/Debian:
 	 ```apt-get install build-essential linux-headers-$(uname -r) dkms```
 - Fedora/CentOS/RHEL:
@@ -37,26 +64,6 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 ~$ make install
 ```
 <br>
-
-### Deb package
-- Prerequisites
-```shell
-~$ apt install -y debhelper dkms
-```
-- Clone this repository
-```shell
-~$ git clone https://github.com/Fred78290/nct6687d
-~$ cd nct6687d
-```
-- Build package
-```shell
-make deb
-```
-- Install package
-```shell
-dpkg -i ../nct6687d-dkms_*.deb
-```
-<br><br>
 
 ## Sensors
 

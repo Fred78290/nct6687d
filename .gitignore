@@ -17,6 +17,8 @@ nct6687.o
 
 dkms/
 
+.tmp/
+
 debian/changelog
 debian/nct6687d-dkms*
 debian/.debhelper
