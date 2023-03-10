@@ -108,6 +108,10 @@ Just add nct6687 into /etc/modules
 
 `sudo sh -c 'echo "nct6687" >> /etc/modules'`
 
+### Arch-Linux with systemd
+
+`sudo sh -c 'echo "nct6687" >> /etc/modules-load.d/nct6687.conf'`
+
 <br>
 
 ## Gnome sensors extensions
