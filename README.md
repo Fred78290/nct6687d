@@ -40,7 +40,7 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 ## Manual Install
 ### Dependencies:
 - Ubuntu/Debian:
-	 ```apt-get install build-essential linux-headers-$(uname -r) dkms```
+	 ```apt-get install build-essential linux-headers-$(uname -r) dkms dh-dkms```
 - Fedora/CentOS/RHEL:
 	```yum install make automake gcc gcc-c++ kernel-devel kernel-headers dkms```
 - ArchLinux:
