@@ -87,6 +87,7 @@ static const char *const nct6687_chip_names[] = {
 #define SIO_NCT6681_ID          0xb270  /* for later */
 #define SIO_NCT6683_ID          0xc730
 #define SIO_NCT6686_ID          0xd440
+#define SIO_NCT6687D_ID         0xd450	/* NCT6687 ???*/
 #define SIO_NCT6687_ID          0xd590
 #define SIO_ID_MASK             0xFFF0
 
@@ -1107,6 +1108,7 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
         case SIO_NCT6686_ID:
                 sio_data->kind = nct6686;
                 break;
+        case SIO_NCT6687D_ID:
         case SIO_NCT6687_ID:
                 sio_data->kind = nct6687;
                 break;
