@@ -84,11 +84,12 @@ static const char *const nct6687_chip_names[] = {
 #define SIO_REG_ENABLE 0x30		 /* Logical device enable */
 #define SIO_REG_ADDR 0x60		 /* Logical device address (2 bytes) */
 
-#define SIO_NCT6683D_ID 0xc732
-#define SIO_NCT6686_ID 0xd440
-#define SIO_NCT6686D_ID 0xd441
-#define SIO_NCT6687_ID 0xd451 // 0xd592
-#define SIO_NCT6687D_ID 0xd592
+#define SIO_NCT6681_ID          0xb270  /* for later */
+#define SIO_NCT6683_ID          0xc730
+#define SIO_NCT6686_ID          0xd440
+#define SIO_NCT6687D_ID         0xd450  /* NCT6687 ???*/
+#define SIO_NCT6687_ID          0xd590
+#define SIO_ID_MASK             0xFFF0
 
 static inline void superio_outb(int ioreg, int reg, int val)
 {
@@ -1100,20 +1101,22 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 
 	pr_debug("found chip ID: 0x%04x\n", val);
 
-	if (val == SIO_NCT6683D_ID) {
-		sio_data->kind = nct6683;
-	} else if (val == SIO_NCT6686_ID || val == SIO_NCT6686D_ID) {
-		sio_data->kind = nct6686;
-	} else if (val == SIO_NCT6687_ID || val == SIO_NCT6687D_ID || force)
-	{
-		sio_data->kind = nct6687;
-	}
-	else
-	{
-		if (val != 0xffff)
-			pr_debug("unsupported chip ID: 0x%04x\n", val);
-		goto fail;
-	}
+       switch (val & SIO_ID_MASK) {
+        case SIO_NCT6683_ID:
+                sio_data->kind = nct6683;
+                break;
+        case SIO_NCT6686_ID:
+                sio_data->kind = nct6686;
+                break;
+        case SIO_NCT6687D_ID:
+        case SIO_NCT6687_ID:
+                sio_data->kind = nct6687;
+                break;
+        default:
+                if (val != 0xffff)
+                        pr_debug("unsupported chip ID: 0x%04x\n", val);
+                goto fail;
+        }
 
 	/* We have a known chip, find the HWM I/O address */
 	superio_select(sioaddr, NCT6687_LD_HWM);
