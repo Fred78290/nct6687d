@@ -1113,6 +1113,10 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
                 sio_data->kind = nct6687;
                 break;
         default:
+		if (force){
+                 sio_data->kind = nct6687;
+                 break;
+		}
                 if (val != 0xffff)
                         pr_debug("unsupported chip ID: 0x%04x\n", val);
                 goto fail;
