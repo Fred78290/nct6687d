@@ -169,7 +169,8 @@ static inline void superio_exit(int ioreg)
 #define NCT6687_REG_FAN_CTRL_MODE(x) 0xA00
 #define NCT6687_REG_FAN_PWM_COMMAND(x) 0xA01
 #define NCT6687_FAN_CFG_REQ 0x80
-#define NCT6687_FAN_CFG_DONE 0x40
+//#define NCT6687_FAN_CFG_DONE          0x40    //! for 6683 returns auto mode and clears 0xA00, 0xA28-0xA2F registers
+#define NCT6687_FAN_CFG_DONE            0x00    //! tested on 6683 6687
 
 #define NCT6687_REG_BUILD_YEAR 0x604
 #define NCT6687_REG_BUILD_MONTH 0x605
