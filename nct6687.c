@@ -819,7 +819,8 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 	if (data->_restoreDefaultFanControlRequired[index])
 	{
 		u8 mode = nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE(index));
-		mode = (u8)(mode & ~data->_initialFanControlMode[index]);
+		u8 bitMask = 0x01 << index;
+		mode = (u8)((mode & ~bitMask) | data->_initialFanControlMode[index]);
 
 		nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
