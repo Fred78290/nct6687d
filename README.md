@@ -9,7 +9,8 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 <br><br>
 
 ## Installation
-### .deb package
+### via package manager
+#### .deb package
 - Clone this repository
 ```shell
 ~$ git clone https://github.com/Fred78290/nct6687d
@@ -25,7 +26,7 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 ```
 <br>
 
-### .rpm package (akmod)
+#### .rpm package (akmod)
 - Clone this repository
 ```shell
 ~$ git clone https://github.com/Fred78290/nct6687d
@@ -37,8 +38,8 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 ```
 <br><br>
 
-## Manual Install
-### Dependencies:
+### Manual Install
+#### Dependencies:
 - Ubuntu/Debian:
 	 ```apt-get install build-essential linux-headers-$(uname -r) dkms dh-dkms```
 - Fedora/CentOS/RHEL:
@@ -49,7 +50,7 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 	 ```zypper in git make gcc dkms```
 <br>
 
-### Build with DKMS
+#### Build with DKMS
 ```shell
 ~$ git clone https://github.com/Fred78290/nct6687d
 ~$ cd nct6687d
@@ -57,7 +58,7 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 ```
 <br>
 
-### Manual build
+#### Manual build
 ```shell
 ~$ git clone (this-repo)
 ~$ cd nct6687d
@@ -122,7 +123,7 @@ Just add nct6687 into /etc/modules
 
 ## Tested
 
-This module was tested on Ubuntu 20.04 with all kernel availble on motherboard [MAG-B550-TOMAHAWK](https://www.msi.com//Motherboard/MAG-B550-TOMAHAWK) running an [AMD 3900X/AMD 5900X](https://www.amd.com/en/products/cpu/amd-ryzen-9-3900x), and on RL8(RHEL8) [MAG-B550M-MORTAR](https://www.msi.com/Motherboard/MAG-B550M-MORTAR) running an [AMD 5700G](https://www.amd.com/en/products/apu/amd-ryzen-7-5700g)
+This module was tested on Ubuntu 20.04 with all kernel available on motherboard [MAG-B550-TOMAHAWK](https://www.msi.com//Motherboard/MAG-B550-TOMAHAWK) running an [AMD 3900X/AMD 5900X](https://www.amd.com/en/products/cpu/amd-ryzen-9-3900x), and on RL8(RHEL8) [MAG-B550M-MORTAR](https://www.msi.com/Motherboard/MAG-B550M-MORTAR) running an [AMD 5700G](https://www.amd.com/en/products/apu/amd-ryzen-7-5700g)
 
 <br>
 
@@ -188,3 +189,16 @@ chip "nct6687-*"
 **1. Fan speed control**
 
 - Changing fan speed was tested succesfuly by users, see reported issue.
+
+## Issues
+### ACPI
+loading nct6687 fails. `journalctl` shows `ACPI: OSL: Resource conflict; ACPI support missing from driver?`:
+* add `acpi_enforce_resources=lax` as a kernel parameter
+
+### Loading fails during startup
+`dmesg` / `journalctl` shows 
+```
+kernel: nct6687: EC base I/O port unconfigured
+systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
+```
+* add `softdep nct6687 pre: i2c_i801` to e.g. `/etc/modprobe.d/sensors.conf`.
