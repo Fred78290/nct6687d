@@ -185,6 +185,16 @@ chip "nct6687-*"
     compute in4       (@ * 2), (@ / 2)
 ```
 
+## MODULE PARAMETERS
+
+- **force** (bool) (default: false)
+  Set to enable support for unknown vendors.
+
+- **manual** (bool) (default: false)
+  Set voltage input and voltage label configured with external sensors file.
+  You can use custom labels and ignore inputs without setting this option if
+  you can figure out their names (see which `*_label` contains builtin label).
+
 ## VERIFIED
 **1. Fan speed control**
 
