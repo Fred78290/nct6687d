@@ -195,6 +195,28 @@ chip "nct6687-*"
   You can use custom labels and ignore inputs without setting this option if
   you can figure out their names (see which `*_label` contains builtin label).
 
+## CONFIGURATION VIA SYSFS
+
+### `pwm[1-8]`
+
+Gets/sets PWM duty cycle or DC value that defines fan speed.  Which unit is used
+depends on what was configured by firmware.
+
+Accepted values: `0`-`255` (slowest to full speed).
+
+Writing to this file changes fan control to manual mode.
+
+Example:
+
+```
+# slow down a fan as much as possible (will stop it if the fan supports zero RPM mode)
+echo 0 > pwm6
+# fix a fan at around half its speed (actual behaviour depends on the fan)
+echo 128 > pwm6
+# full speed
+echo 255 > pwm6
+```
+
 ## VERIFIED
 **1. Fan speed control**
 
