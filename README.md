@@ -246,7 +246,7 @@ echo 1 > pwm6_enable
 ## VERIFIED
 **1. Fan speed control**
 
-- Changing fan speed was tested succesfuly by users, see reported issue.
+- Changing fan speed was tested successfully by users, see in [reported issues](https://github.com/Fred78290/nct6687d/issues).
 
 ## Issues
 ### ACPI
