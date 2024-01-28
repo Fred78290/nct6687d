@@ -198,6 +198,32 @@ chip "nct6687-*"
 
 ## CONFIGURATION VIA SYSFS
 
+In order to be able to use this interface you need to know the path as which
+it's published. The path isn't fixed and depends on the order in which chips are
+registered by the kernel. One way to find it is by device class (`hwmon`) via a
+simple command like this:
+```
+for d in /sys/class/hwmon/*; do echo "$d: $(cat "$d/name")"; done | grep nct6687
+```
+
+Possible output:
+```
+/sys/class/hwmon/hwmon5: nct6687
+```
+
+This means that your base path for examples below is `/sys/class/hwmon/hwmon5`
+(note that adding/removing hardware can change the path, drop `grep` from the
+command above to see all sensors and their relative ordering).
+
+Another way to look it up is by a device (class path actually just points to
+device path) like in:
+
+`cd /sys/devices/platform/nct6687.*/hwmon/hwmon*`
+
+The first asterisk will be expanded to an address (`2592` which is `0xa20` that
+you can see in `sensors` output) and the second one to a number like `5` from
+above.
+
 ### `pwm[1-8]`
 
 Gets/sets PWM duty cycle or DC value that defines fan speed.  Which unit is used
