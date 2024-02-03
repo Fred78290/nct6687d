@@ -47,7 +47,7 @@ enum kinds
 	nct6687
 };
 
-enum pwm_ebable
+enum pwm_enable
 {
 	manual_mode = 1,
 	// There are multiple automatic modes, none of which is configurable by this module yet.
@@ -344,7 +344,7 @@ struct nct6687_data
 	bool _restoreDefaultFanControlRequired[NCT6687_NUM_REG_FAN];
 
 	u8 pwm[NCT6687_NUM_REG_PWM];
-	enum pwm_ebable pwm_ebable[NCT6687_NUM_REG_PWM];
+	enum pwm_enable pwm_enable[NCT6687_NUM_REG_PWM];
 
 	/* Remember extra register values over suspend/resume */
 	u8 hwm_cfg;
@@ -581,7 +581,7 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 	pr_debug("nct6687_update_voltage\n");
 }
 
-static enum pwm_ebable nct6687_get_pwm_ebable(struct nct6687_data *data, int index)
+static enum pwm_enable nct6687_get_pwm_enable(struct nct6687_data *data, int index)
 {
 	u16 bitMask = 0x01 << index;
 	if (nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE(index)) & bitMask)
@@ -609,7 +609,7 @@ static void nct6687_update_fans(struct nct6687_data *data)
 	for (i = 0; i < NCT6687_NUM_REG_PWM; i++)
 	{
 		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
-		data->pwm_ebable[i] = nct6687_get_pwm_ebable(data, i);
+		data->pwm_enable[i] = nct6687_get_pwm_enable(data, i);
 
 		pr_debug("nct6687_update_fans[%d], pwm=%d", i, data->pwm[i]);
 	}
@@ -816,15 +816,15 @@ static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, cons
 	return count;
 }
 
-static ssize_t show_pwm_ebable(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t show_pwm_enable(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct nct6687_data *data = nct6687_update_device(dev);
 	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
 
-	return sprintf(buf, "%d\n", data->pwm_ebable[sattr->nr]);
+	return sprintf(buf, "%d\n", data->pwm_enable[sattr->nr]);
 }
 
-static ssize_t store_pwm_ebable(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t store_pwm_enable(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
 	struct nct6687_data *data = dev_get_drvdata(dev);
@@ -862,7 +862,7 @@ static ssize_t store_pwm_ebable(struct device *dev, struct device_attribute *att
 }
 
 SENSOR_TEMPLATE(pwm, "pwm%d", S_IRUGO, show_pwm, store_pwm, 0);
-SENSOR_TEMPLATE_2(pwm_ebable, "pwm%d_enable", S_IRUGO, show_pwm_ebable, store_pwm_ebable, 0, 0);
+SENSOR_TEMPLATE_2(pwm_enable, "pwm%d_enable", S_IRUGO, show_pwm_enable, store_pwm_enable, 0, 0);
 
 static void nct6687_save_fan_control(struct nct6687_data *data, int index)
 {
@@ -908,7 +908,7 @@ static umode_t nct6687_pwm_is_visible(struct kobject *kobj, struct attribute *at
 
 static struct sensor_device_template *nct6687_attributes_pwm_template[] = {
 	&sensor_dev_template_pwm,
-	&sensor_dev_template_pwm_ebable,
+	&sensor_dev_template_pwm_enable,
 	NULL,
 };
 
@@ -1012,13 +1012,13 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 	{
 		data->_initialFanPwmCommand[i] = nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(i));
 		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
-		data->pwm_ebable[i] = nct6687_get_pwm_ebable(data, i);
+		data->pwm_enable[i] = nct6687_get_pwm_enable(data, i);
 
-		pr_debug("nct6687_setup_pwm[%d], addr=%04X, pwm=%d, pwm_ebable=%d, _initialFanPwmCommand=%d\n",
+		pr_debug("nct6687_setup_pwm[%d], addr=%04X, pwm=%d, pwm_enable=%d, _initialFanPwmCommand=%d\n",
 		         i,
 		         NCT6687_REG_FAN_PWM_COMMAND(i),
 		         data->pwm[i],
-		         data->pwm_ebable[i],
+		         data->pwm_enable[i],
 		         data->_initialFanPwmCommand[i]);
 	}
 }
