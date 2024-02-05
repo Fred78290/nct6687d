@@ -269,6 +269,12 @@ echo 99 > pwm6_enable
 echo 1 > pwm6_enable
 ```
 
+### pwm[1-7]_mode
+    - controls if output is PWM or DC level
+
+        * 1 DC output
+        * 0 PWM output
+
 ## VERIFIED
 **1. Fan speed control**
 
