@@ -159,6 +159,7 @@ static inline void superio_exit(int ioreg)
 #define NCT6687_REG_FAN_RPM(x) (0x140 + (x)*2)
 #define NCT6687_REG_PWM(x) (0x160 + (x))
 #define NCT6687_REG_PWM_WRITE(x) (0xa28 + (x))
+#define NCT6687_REG_PWM_MODE 0x2F4
 
 #define NCT6687_HWM_CFG 0x180
 
@@ -901,6 +902,19 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 	}
 }
 
+static ssize_t show_pwm_mode(struct device *dev, struct device_attribute *attr, char *buf)
+{
+        u16 mode;
+        u8 pwm_mode; //one bit
+        struct nct6687_data *data = nct6687_update_device(dev);
+        struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+        int index = sattr->index;
+mode = nct6687_read(data, NCT6687_REG_PWM_MODE);
+pwm_mode = (u8)( (mode >> index)&0x01);
+return sprintf(buf, "%d\n", pwm_mode);
+}       
+SENSOR_TEMPLATE(pwm_mode, "pwm%d_mode", S_IRUGO, show_pwm_mode, NULL, 0);
+
 static umode_t nct6687_pwm_is_visible(struct kobject *kobj, struct attribute *attr, int index)
 {
 	return attr->mode | S_IWUSR;
@@ -909,6 +923,7 @@ static umode_t nct6687_pwm_is_visible(struct kobject *kobj, struct attribute *at
 static struct sensor_device_template *nct6687_attributes_pwm_template[] = {
 	&sensor_dev_template_pwm,
 	&sensor_dev_template_pwm_enable,
+	&sensor_dev_template_pwm_mode,
 	NULL,
 };
 
