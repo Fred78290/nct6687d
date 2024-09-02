@@ -37,8 +37,13 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b))
+#endif
+
+#ifndef MAX
 #define MAX(a,b) (((a)>(b))?(a):(b))
+#endif
 
 enum kinds
 {
@@ -1162,6 +1167,8 @@ static int nct6687_resume(struct platform_device *pdev)
 
 #define NCT6687_DEV_PM_OPS NULL
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 static struct platform_driver nct6687_driver = {
 	.driver = {
 		.name = DRVNAME,
@@ -1172,6 +1179,7 @@ static struct platform_driver nct6687_driver = {
 	.suspend = nct6687_suspend,
 	.resume = nct6687_resume,
 };
+#pragma GCC diagnostic pop
 
 static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 {
