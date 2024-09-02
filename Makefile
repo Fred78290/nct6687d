@@ -65,7 +65,7 @@ debian/changelog: FORCE
 		> $@
 
 deb: debian/changelog
-	sudo apt install -y debhelper dkms
+	sudo apt install -y debhelper dkms dh-dkms
 	dpkg-buildpackage -b -rfakeroot -us -uc
 
 .PHONY: FORCE
