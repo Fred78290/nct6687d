@@ -37,9 +37,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
-
 enum kinds
 {
 	nct6683,
@@ -1034,7 +1031,7 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 	}
 }
 
-static int nct6687_remove(struct platform_device *pdev)
+static void nct6687_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct nct6687_data *data = dev_get_drvdata(dev);
@@ -1048,8 +1045,6 @@ static int nct6687_remove(struct platform_device *pdev)
 	}
 
 	mutex_unlock(&data->update_lock);
-
-	return 0;
 }
 
 static int nct6687_probe(struct platform_device *pdev)
