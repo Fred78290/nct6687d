@@ -37,6 +37,14 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#ifndef MIN
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#endif
+
+#ifndef MAX
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#endif
+
 enum kinds
 {
 	nct6683,
@@ -1031,7 +1039,7 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 	}
 }
 
-static void nct6687_remove(struct platform_device *pdev)
+static int nct6687_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct nct6687_data *data = dev_get_drvdata(dev);
@@ -1045,6 +1053,8 @@ static void nct6687_remove(struct platform_device *pdev)
 	}
 
 	mutex_unlock(&data->update_lock);
+
+	return 0;
 }
 
 static int nct6687_probe(struct platform_device *pdev)
@@ -1157,6 +1167,8 @@ static int nct6687_resume(struct platform_device *pdev)
 
 #define NCT6687_DEV_PM_OPS NULL
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 static struct platform_driver nct6687_driver = {
 	.driver = {
 		.name = DRVNAME,
@@ -1167,6 +1179,7 @@ static struct platform_driver nct6687_driver = {
 	.suspend = nct6687_suspend,
 	.resume = nct6687_resume,
 };
+#pragma GCC diagnostic pop
 
 static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 {
