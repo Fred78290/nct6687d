@@ -4,6 +4,7 @@ curpwd      := $(shell pwd)
 kver        := $(shell uname -r)
 commitcount := $(shell git rev-list --all --count)
 commithash  := $(shell git rev-parse --short HEAD)
+fedoraver := $(shell sed -n 's/.*Fedora release \([^ ]*\).*/\1/p' /etc/fedora-release)
 
 
 build:
@@ -21,7 +22,12 @@ clean:
 
 
 akmod/build:
-	sudo dnf groupinstall -y "Development Tools"
+	@if [ $(fedoraver) -gt 40 ]; then \
+		echo "Fedora version $(fedoraver) is greater than 40, using dnf5 command"; \
+		sudo dnf install -y @development-tools; \
+	else \
+		sudo dnf groupinstall -y "Development Tools"; \
+	fi
 	sudo dnf install -y rpmdevtools kmodtool
 	mkdir -p ${curpwd}/.tmp/nct6687d-1.0.${commitcount}/nct6687d
 	cp LICENSE Makefile nct6687.c ${curpwd}/.tmp/nct6687d-1.0.${commitcount}/nct6687d
