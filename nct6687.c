@@ -156,7 +156,7 @@ static inline void superio_exit(int ioreg)
 
 #define NCT6687_NUM_REG_VOLTAGE (sizeof(nct6687_voltage_definition) / sizeof(struct voltage_reg))
 #define NCT6687_NUM_REG_TEMP 7
-#define NCT6687_NUM_REG_FAN 8
+#define NCT6687_NUM_REG_FAN 16
 #define NCT6687_NUM_REG_PWM 8
 
 #define NCT6687_REG_TEMP(x) (0x100 + (x)*2)
@@ -318,6 +318,16 @@ static const char *const nct6687_fan_label[] = {
 	"System Fan #4",
 	"System Fan #5",
 	"System Fan #6",
+
+	"System Fan #7",
+	"System Fan #8",
+	"System Fan #9",
+	"System Fan #10",
+	"System Fan #11",
+	"System Fan #12",
+	"System Fan #13",
+	"System Fan #14",
+
 	NULL,
 };
 
