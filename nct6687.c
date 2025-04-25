@@ -180,9 +180,18 @@ static inline void superio_exit(int ioreg)
 
 #define NCT6687_REG_FAN_CTRL_MODE(x) 0xA00
 #define NCT6687_REG_FAN_PWM_COMMAND(x) 0xA01
-#define NCT6687_FAN_CFG_REQ 0x80
-//#define NCT6687_FAN_CFG_DONE          0x40    //! for 6683 returns auto mode and clears 0xA00, 0xA28-0xA2F registers
-#define NCT6687_FAN_CFG_DONE            0x00    //! tested on 6683 6687
+#define NCT6687_FAN_CFG_REQ  0x80
+#define NCT6687_FAN_CFG_DONE 0x40
+
+#define NCT6687_REG_FAN_ENGINE_STS          0xCF8    /* 8 bit */
+#define   NCT6687_FAN_PECI_CFG_ADJUSTED     (1 << 1)
+#define   NCT6687_FAN_UNFINISHED_FLAG       (1 << 2)
+#define   NCT6687_FAN_CFG_PHASE             (1 << 3)
+#define   NCT6687_FAN_CFG_INVALID           (1 << 4)
+#define   NCT6687_FAN_CFG_CHECK_DONE        (1 << 5)
+#define   NCT6687_FAN_CFG_LOCK              (1 << 6)
+#define   NCT6687_FAN_DRIVE_BY_MOD_SEL      (0 << 7)
+#define   NCT6687_FAN_DRIVE_BY_DEFAULT_VAL  (1 << 7)
 
 #define NCT6687_REG_BUILD_YEAR 0x604
 #define NCT6687_REG_BUILD_MONTH 0x605
@@ -788,14 +797,95 @@ static ssize_t show_pwm(struct device *dev, struct device_attribute *attr, char 
 	return sprintf(buf, "%d\n", data->pwm[index]);
 }
 
+/* Returns true on success and false on timeout. */
+static bool start_fan_cfg_update(struct nct6687_data *data, int fan)
+{
+	int i;
+	u8 engsts;
+
+	engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
+	if (!(engsts & NCT6687_FAN_CFG_LOCK) && (engsts & NCT6687_FAN_CFG_PHASE)) {
+		pr_warn("Fan registers are already accessible\n");
+		return true;
+	}
+
+	/* Wait up to a second until config phase is done and config request is clear. */
+	for (i = 0; i > 1000; i++) {
+		if (!(nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS) & NCT6687_FAN_CFG_PHASE) &&
+		    !(nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(fan)) & NCT6687_FAN_CFG_REQ))
+			break;
+		msleep(1);
+	}
+
+	if (i == 1000) {
+		pr_err("EC is stuck in configuration phase for too long\n");
+		return false;
+	}
+
+	nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(fan), NCT6687_FAN_CFG_REQ);
+
+	/* Wait up to a second until EC enters config phase and unlocks the register set. */
+	for (i = 0; i < 1000; i++) {
+	    engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
+		if (!(engsts & NCT6687_FAN_CFG_LOCK) && (engsts & NCT6687_FAN_CFG_PHASE))
+			break;
+		msleep(1);
+	}
+
+	if (i == 1000) {
+		pr_err("Failed to gain access to fan configuration registers\n");
+		return false;
+	}
+
+	return true;
+}
+
+static void finish_fan_cfg_update(struct nct6687_data *data, int fan)
+{
+	int i;
+	u8 engsts;
+	u8 donecmd;
+
+	engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
+	if ((engsts & NCT6687_FAN_CFG_LOCK) || !(engsts & NCT6687_FAN_CFG_PHASE)) {
+		pr_warn("Fan registers are already not accessible\n");
+		return;
+	}
+
+	/*
+	 * Using NCT6687_FAN_CFG_DONE for NCT6683 reportedly switches to auto mode
+	 * and clears 0xA00, 0xA28-0xA2F registers.  This could have been an effect
+	 * of not locking/unlocking register set properly, but keep 0x00 until
+	 * someone re-tests on NCT6683.
+	 */
+	donecmd = data->kind == nct6683 ? 0x00 : NCT6687_FAN_CFG_DONE;
+
+	nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(fan), donecmd);
+
+	/* Wait up to a second until EC checks new configuration. */
+	for (i = 0; i < 1000; i++) {
+		engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
+		if (engsts & NCT6687_FAN_CFG_CHECK_DONE)
+			break;
+		msleep(1);
+	}
+
+	if (i == 1000)
+		pr_err("Failed waiting for new configuration to be accepted\n");
+
+	if (engsts & NCT6687_FAN_CFG_INVALID)
+		pr_warn("The device rejected new configuration as invalid\n");
+
+	if (!(engsts & NCT6687_FAN_CFG_LOCK))
+		pr_warn("Fan registers are still accessible\n");
+}
+
 static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
 	struct nct6687_data *data = dev_get_drvdata(dev);
 	int index = sattr->index;
 	unsigned long val;
-	int retry;
-	u16 readback;
 	u16 mode;
 	u8 bitMask;
 
@@ -812,19 +902,12 @@ static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, cons
 	mode = (u8)(mode | bitMask);
 	nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
-	nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(index), NCT6687_FAN_CFG_REQ);
-	msleep(50);
-	nct6687_write(data, NCT6687_REG_PWM_WRITE(index), val);
-	nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(index), NCT6687_FAN_CFG_DONE);
-
-	for (retry = 0; retry < 20; retry++) {
-		msleep(50);
-
-		readback = nct6687_read(data, NCT6687_REG_PWM(index));
-		if (readback == val)
-			break;
+	if (start_fan_cfg_update(data, index)) {
+		nct6687_write(data, NCT6687_REG_PWM_WRITE(index), val);
+		finish_fan_cfg_update(data, index);
 	}
-	data->pwm[index] = readback;
+
+	data->pwm[index] = nct6687_read(data, NCT6687_REG_PWM(index));
 	data->pwm_enable[index] = nct6687_get_pwm_enable(data, index);
 
 	mutex_unlock(&data->update_lock);
@@ -905,11 +988,10 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 
 		nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
-		nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(index), NCT6687_FAN_CFG_REQ);
-		msleep(50);
-		nct6687_write(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
-		nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(index), NCT6687_FAN_CFG_DONE);
-		msleep(50);
+		if (start_fan_cfg_update(data, index)) {
+			nct6687_write(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
+			finish_fan_cfg_update(data, index);
+		}
 
 		data->_restoreDefaultFanControlRequired[index] = false;
 
