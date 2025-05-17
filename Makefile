@@ -71,7 +71,10 @@ debian/changelog: FORCE
 		> $@
 
 deb: debian/changelog
-	sudo apt install -y debhelper dkms
+	sudo apt install -y debhelper dkms dh-dkms
+	@if apt-cache show dh-dkms > /dev/null 2>&1; then \
+		sudo apt-get install -y dh-dkms; \
+	fi
 	dpkg-buildpackage -b -rfakeroot -us -uc
 
 .PHONY: FORCE
