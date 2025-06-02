@@ -4,7 +4,7 @@ curpwd      := $(shell pwd)
 kver        ?= $(shell uname -r)
 commitcount := $(shell git rev-list --all --count)
 commithash  := $(shell git rev-parse --short HEAD)
-fedoraver := $(shell sed -n 's/.*Fedora release \([^ ]*\).*/\1/p' /etc/fedora-release)
+fedoraver   := $(shell sed -n 's/.*Fedora release \([^ ]*\).*/\1/p' /etc/fedora-release 2>/dev/null || echo 0)
 
 
 build:
