@@ -1,16 +1,17 @@
-obj-m += nct6687.o
+makefile    := obj-m += nct6687.o
 
 curpwd      := $(shell pwd)
 kver        ?= $(shell uname -r)
 commitcount := $(shell git rev-list --all --count)
 commithash  := $(shell git rev-parse --short HEAD)
-fedoraver := $(shell sed -n 's/.*Fedora release \([^ ]*\).*/\1/p' /etc/fedora-release)
+fedoraver   := $(shell sed -n 's/.*Fedora release \([^ ]*\).*/\1/p' /etc/fedora-release 2>/dev/null || echo 0)
 
 
 build:
 	rm -rf ${curpwd}/${kver}
 	mkdir -p ${curpwd}/${kver}
-	cp ${curpwd}/Makefile ${curpwd}/nct6687.c ${curpwd}/${kver}
+	cp ${curpwd}/nct6687.c ${curpwd}/${kver}
+	echo '${makefile}' > ${curpwd}/${kver}/Makefile
 	cd ${curpwd}/${kver}
 	make -C /lib/modules/${kver}/build M=${curpwd}/${kver} modules
 install: build
@@ -30,7 +31,8 @@ akmod/build:
 	fi
 	sudo dnf install -y rpmdevtools kmodtool
 	mkdir -p ${curpwd}/.tmp/nct6687d-1.0.${commitcount}/nct6687d
-	cp LICENSE Makefile nct6687.c ${curpwd}/.tmp/nct6687d-1.0.${commitcount}/nct6687d
+	cp LICENSE nct6687.c ${curpwd}/.tmp/nct6687d-1.0.${commitcount}/nct6687d
+	echo '${makefile}' > ${curpwd}/.tmp/nct6687d-1.0.${commitcount}/nct6687d/Makefile
 	cd .tmp && tar -czvf nct6687d-1.0.${commitcount}.tar.gz nct6687d-1.0.${commitcount} && cd -
 	mkdir -p ${curpwd}/.tmp/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp ${curpwd}/.tmp/nct6687d-1.0.${commitcount}.tar.gz ${curpwd}/.tmp/rpmbuild/SOURCES/
@@ -54,7 +56,8 @@ dkms/build:
 dkms/install:
 	rm -rf ${curpwd}/dkms
 	mkdir -p ${curpwd}/dkms
-	cp ${curpwd}/dkms.conf ${curpwd}/Makefile ${curpwd}/nct6687.c ${curpwd}/dkms
+	cp ${curpwd}/dkms.conf ${curpwd}/nct6687.c ${curpwd}/dkms
+	echo '${makefile}' > ${curpwd}/dkms/Makefile
 	sudo rm -rf /usr/src/nct6687d-1
 	sudo cp -rT dkms /usr/src/nct6687d-1
 	sudo dkms install nct6687d/1
@@ -71,7 +74,7 @@ debian/changelog: FORCE
 		> $@
 
 deb: debian/changelog
-	sudo apt install -y debhelper dkms dh-dkms
+	sudo apt install -y debhelper dkms
 	@if apt-cache show dh-dkms > /dev/null 2>&1; then \
 		sudo apt-get install -y dh-dkms; \
 	fi
