@@ -810,7 +810,7 @@ static bool start_fan_cfg_update(struct nct6687_data *data, int fan)
 	}
 
 	/* Wait up to a second until config phase is done and config request is clear. */
-	for (i = 0; i > 1000; i++) {
+	for (i = 0; i < 1000; i++) {
 		if (!(nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS) & NCT6687_FAN_CFG_PHASE) &&
 		    !(nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(fan)) & NCT6687_FAN_CFG_REQ))
 			break;
