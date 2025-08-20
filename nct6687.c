@@ -161,8 +161,8 @@ static inline void superio_exit(int ioreg)
 
 #define NCT6687_REG_TEMP(x) (0x100 + (x)*2)
 #define NCT6687_REG_VOLTAGE(x) (0x120 + (x)*2)
-#define NCT6687_REG_FAN_RPM(x) (nct6687_fan_config_active[x].reg)
-#define NCT6687_REG_PWM(x) (0x160 + (x))
+#define NCT6687_REG_FAN_RPM(x) (nct6687_fan_config_active[x].reg_rpm)
+#define NCT6687_REG_PWM(x) (nct6687_fan_config_active[x].reg_pwm)
 #define NCT6687_REG_PWM_WRITE(x) (0xa28 + (x))
 
 #define NCT6687_HWM_CFG 0x180
@@ -320,30 +320,31 @@ static const char *const nct6687_temp_label[] = {
 
 struct nct6687_fan_config
 {
-	u16 reg;
+	u16 reg_rpm;
+	u16 reg_pwm;
 	const char *label;
 };
 
 static struct nct6687_fan_config nct6687_fan_config_default[] = {
-	{ .reg = 0x140, .label = "CPU Fan"}, // CPU Fan
-	{ .reg = 0x142, .label = "Pump Fan"}, // PUMP Fan
-	{ .reg = 0x144, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
-	{ .reg = 0x146, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
-	{ .reg = 0x148, .label = "System Fan #3"}, // SYS Fan 3
-	{ .reg = 0x14A, .label = "System Fan #4"}, // SYS Fan 4
-	{ .reg = 0x14C, .label = "System Fan #5"}, // SYS Fan 5
-	{ .reg = 0x14E, .label = "System Fan #6"}, // SYS Fan 6
+	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"}, // CPU Fan
+	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"}, // PUMP Fan
+	{ .reg_rpm = 0x144, .reg_pwm = 0x162, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
+	{ .reg_rpm = 0x146, .reg_pwm = 0x163, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
+	{ .reg_rpm = 0x148, .reg_pwm = 0x164, .label = "System Fan #3"}, // SYS Fan 3
+	{ .reg_rpm = 0x14A, .reg_pwm = 0x165, .label = "System Fan #4"}, // SYS Fan 4
+	{ .reg_rpm = 0x14C, .reg_pwm = 0x166, .label = "System Fan #5"}, // SYS Fan 5
+	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .label = "System Fan #6"}, // SYS Fan 6
 };
 
 static struct nct6687_fan_config nct6687_fan_config_msi[] = {
-	{ .reg = 0x140, .label = "CPU Fan"},
-	{ .reg = 0x142, .label = "Pump Fan"},
-	{ .reg = 0x15E, .label = "System Fan #1"},
-	{ .reg = 0x15C, .label = "System Fan #2"},
-	{ .reg = 0x15A, .label = "System Fan #3"},
-	{ .reg = 0x158, .label = "System Fan #4"},
-	{ .reg = 0x156, .label = "System Fan #5"},
-	{ .reg = 0x154, .label = "System Fan #6"},
+	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"},
+	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"},
+	{ .reg_rpm = 0x15E, .reg_pwm = 0xE05, .label = "System Fan #1"},
+	{ .reg_rpm = 0x15C, .reg_pwm = 0xE04, .label = "System Fan #2"},
+	{ .reg_rpm = 0x15A, .reg_pwm = 0xE03, .label = "System Fan #3"},
+	{ .reg_rpm = 0x158, .reg_pwm = 0xE02, .label = "System Fan #4"},
+	{ .reg_rpm = 0x156, .reg_pwm = 0xE01, .label = "System Fan #5"},
+	{ .reg_rpm = 0x154, .reg_pwm = 0xE00, .label = "System Fan #6"},
 };
 
 enum nct6687_fan_config_type {
