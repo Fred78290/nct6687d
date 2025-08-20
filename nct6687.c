@@ -336,6 +336,7 @@ static struct nct6687_fan_config nct6687_fan_config_default[] = {
 	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .label = "System Fan #6"}, // SYS Fan 6
 };
 
+//pwm registers copied from https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/pull/1644/files but still don't seem to be correct
 static struct nct6687_fan_config nct6687_fan_config_msi[] = {
 	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"},
 	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"},
