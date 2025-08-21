@@ -336,8 +336,9 @@ static struct nct6687_fan_config nct6687_fan_config_default[] = {
 	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .label = "System Fan #6"}, // SYS Fan 6
 };
 
+//some MSI B850, X870, and Z890 boards
 //pwm registers copied from https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/pull/1644/files but still don't seem to be correct
-static struct nct6687_fan_config nct6687_fan_config_msi[] = {
+static struct nct6687_fan_config nct6687_fan_config_msi_alt[] = {
 	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"},
 	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"},
 	{ .reg_rpm = 0x15E, .reg_pwm = 0xE05, .label = "System Fan #1"},
@@ -350,7 +351,7 @@ static struct nct6687_fan_config nct6687_fan_config_msi[] = {
 
 enum nct6687_fan_config_type {
 	FAN_CONFIG_DEFAULT = 0,
-	FAN_CONFIG_MSI_ALT, //some MSI B850, X870, and Z890 boards
+	FAN_CONFIG_MSI_ALT1, //some MSI B850, X870, and Z890 boards
 };
 
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
@@ -369,9 +370,9 @@ static int nct6687_fan_config_op_write_handler(const char *val, const struct ker
 	if (strcmp(s, "default") == 0) {
 		nct6687_fan_config_type = FAN_CONFIG_DEFAULT;
 		nct6687_fan_config_active = nct6687_fan_config_default;
-	} else if (strcmp(s, "msi") == 0) {
-		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT;
-		nct6687_fan_config_active = nct6687_fan_config_msi;
+	} else if (strcmp(s, "msi_alt1") == 0) {
+		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
+		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
 	} else {
 		return -EINVAL;
 	}
@@ -386,8 +387,8 @@ static int nct6687_fan_config_op_read_handler(char *buffer, const struct kernel_
 			strcpy(buffer, "default");
 			break;
 
-		case FAN_CONFIG_MSI_ALT:
-			strcpy(buffer, "msi");
+		case FAN_CONFIG_MSI_ALT1:
+			strcpy(buffer, "msi_alt1");
 			break;
 
 		default:

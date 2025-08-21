@@ -196,6 +196,13 @@ chip "nct6687-*"
   You can use custom labels and ignore inputs without setting this option if
   you can figure out their names (see which `*_label` contains builtin label).
 
+- **fan_config** (`default`, `msi_alt1`) (default: `default`) Changes fan configuration 
+  for RPM & PWM registers for motherboards with alternative chip configurations.
+  
+  Motherboards which need this will show CPU/Pump RPMs but no data on System fans.
+
+  `msi_alt1` is known to work with come MSI Motherboards using the MSI B850, X870, or Z890 chipsets
+
 ## CONFIGURATION VIA SYSFS
 
 In order to be able to use this interface you need to know the path as which
@@ -286,3 +293,6 @@ kernel: nct6687: EC base I/O port unconfigured
 systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
 ```
 * add `softdep nct6687 pre: i2c_i801` to e.g. `/etc/modprobe.d/sensors.conf`.
+
+### Only CPU & Pump show RPM values
+If you have an MSI motherboard, try using module parameter `fan_config=msi_alt1`
