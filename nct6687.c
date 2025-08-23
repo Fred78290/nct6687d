@@ -161,8 +161,8 @@ static inline void superio_exit(int ioreg)
 
 #define NCT6687_REG_TEMP(x) (0x100 + (x)*2)
 #define NCT6687_REG_VOLTAGE(x) (0x120 + (x)*2)
-#define NCT6687_REG_FAN_RPM(x) (0x140 + (x)*2)
-#define NCT6687_REG_PWM(x) (0x160 + (x))
+#define NCT6687_REG_FAN_RPM(x) (nct6687_fan_config_active[x].reg_rpm)
+#define NCT6687_REG_PWM(x) (nct6687_fan_config_active[x].reg_pwm)
 #define NCT6687_REG_PWM_WRITE(x) (0xa28 + (x))
 
 #define NCT6687_HWM_CFG 0x180
@@ -318,17 +318,93 @@ static const char *const nct6687_temp_label[] = {
 	NULL,
 };
 
-static const char *const nct6687_fan_label[] = {
-	"CPU Fan",
-	"Pump Fan",
-	"System Fan #1",
-	"System Fan #2",
-	"System Fan #3",
-	"System Fan #4",
-	"System Fan #5",
-	"System Fan #6",
-	NULL,
+struct nct6687_fan_config
+{
+	u16 reg_rpm;
+	u16 reg_pwm;
+	const char *label;
 };
+
+static struct nct6687_fan_config nct6687_fan_config_default[] = {
+	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"}, // CPU Fan
+	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"}, // PUMP Fan
+	{ .reg_rpm = 0x144, .reg_pwm = 0x162, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
+	{ .reg_rpm = 0x146, .reg_pwm = 0x163, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
+	{ .reg_rpm = 0x148, .reg_pwm = 0x164, .label = "System Fan #3"}, // SYS Fan 3
+	{ .reg_rpm = 0x14A, .reg_pwm = 0x165, .label = "System Fan #4"}, // SYS Fan 4
+	{ .reg_rpm = 0x14C, .reg_pwm = 0x166, .label = "System Fan #5"}, // SYS Fan 5
+	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .label = "System Fan #6"}, // SYS Fan 6
+};
+
+//some MSI B850, X870, and Z890 boards
+//pwm registers copied from https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/pull/1644/files but still don't seem to be correct
+static struct nct6687_fan_config nct6687_fan_config_msi_alt[] = {
+	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"},
+	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"},
+	{ .reg_rpm = 0x15E, .reg_pwm = 0xE05, .label = "System Fan #1"},
+	{ .reg_rpm = 0x15C, .reg_pwm = 0xE04, .label = "System Fan #2"},
+	{ .reg_rpm = 0x15A, .reg_pwm = 0xE03, .label = "System Fan #3"},
+	{ .reg_rpm = 0x158, .reg_pwm = 0xE02, .label = "System Fan #4"},
+	{ .reg_rpm = 0x156, .reg_pwm = 0xE01, .label = "System Fan #5"},
+	{ .reg_rpm = 0x154, .reg_pwm = 0xE00, .label = "System Fan #6"},
+};
+
+enum nct6687_fan_config_type {
+	FAN_CONFIG_DEFAULT = 0,
+	FAN_CONFIG_MSI_ALT1, //some MSI B850, X870, and Z890 boards
+};
+
+static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
+static struct nct6687_fan_config (*nct6687_fan_config_active) = nct6687_fan_config_default;
+
+static int nct6687_fan_config_op_write_handler(const char *val, const struct kernel_param *kp)
+{
+	char valcp[16];
+	char *s;
+
+	strncpy(valcp, val, 16);
+	valcp[15] = '\0';
+
+	s = strstrip(valcp);
+
+	if (strcmp(s, "default") == 0) {
+		nct6687_fan_config_type = FAN_CONFIG_DEFAULT;
+		nct6687_fan_config_active = nct6687_fan_config_default;
+	} else if (strcmp(s, "msi_alt1") == 0) {
+		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
+		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
+	} else {
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int nct6687_fan_config_op_read_handler(char *buffer, const struct kernel_param *kp)
+{
+	switch (nct6687_fan_config_type) {
+		case FAN_CONFIG_DEFAULT:
+			strcpy(buffer, "default");
+			break;
+
+		case FAN_CONFIG_MSI_ALT1:
+			strcpy(buffer, "msi_alt1");
+			break;
+
+		default:
+			strcpy(buffer, "error");
+			break;
+	}
+
+	return strlen(buffer);
+}
+
+static const struct kernel_param_ops nct6687_fan_config_op_ops = {
+	.set = nct6687_fan_config_op_write_handler,
+	.get = nct6687_fan_config_op_read_handler
+};
+
+module_param_cb(fan_config, &nct6687_fan_config_op_ops, NULL, 0660);
 
 /* ------------------------------------------------------- */
 struct nct6687_data
@@ -704,7 +780,7 @@ static ssize_t show_fan_label(struct device *dev, struct device_attribute *attr,
 {
 	struct sensor_device_attribute *sattr = to_sensor_dev_attr(attr);
 
-	return sprintf(buf, "%s\n", nct6687_fan_label[sattr->index]);
+	return sprintf(buf, "%s\n", nct6687_fan_config_active[sattr->index].label);
 }
 
 static ssize_t show_fan_value(struct device *dev, struct device_attribute *attr, char *buf)
@@ -1058,7 +1134,7 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 		data->_initialFanControlMode[i] = (u8)(reg & bitMask);
 		data->_restoreDefaultFanControlRequired[i] = false;
 
-		pr_debug("nct6687_setup_fans[%d], %s - addr=%04X, ctrl=%04X, rpm=%d, _initialFanControlMode=%d\n", i, nct6687_fan_label[i], NCT6687_REG_FAN_CTRL_MODE(i), reg, rpm, data->_initialFanControlMode[i]);
+		pr_debug("nct6687_setup_fans[%d], %s - addr=%04X, ctrl=%04X, rpm=%d, _initialFanControlMode=%d\n", i, nct6687_fan_config_active[i].label, NCT6687_REG_FAN_CTRL_MODE(i), reg, rpm, data->_initialFanControlMode[i]);
 	}
 }
 
