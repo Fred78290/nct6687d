@@ -163,7 +163,7 @@ static inline void superio_exit(int ioreg)
 #define NCT6687_REG_VOLTAGE(x) (0x120 + (x)*2)
 #define NCT6687_REG_FAN_RPM(x) (nct6687_fan_config_active[x].reg_rpm)
 #define NCT6687_REG_PWM(x) (nct6687_fan_config_active[x].reg_pwm)
-#define NCT6687_REG_PWM_WRITE(x) (0xa28 + (x))
+#define NCT6687_REG_PWM_WRITE(x) (nct6687_fan_config_active[x].reg_pwm_write)
 
 #define NCT6687_HWM_CFG 0x180
 
@@ -322,31 +322,33 @@ struct nct6687_fan_config
 {
 	u16 reg_rpm;
 	u16 reg_pwm;
+	u16 reg_pwm_write;  // PWM write/control register
 	const char *label;
 };
 
 static struct nct6687_fan_config nct6687_fan_config_default[] = {
-	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"}, // CPU Fan
-	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"}, // PUMP Fan
-	{ .reg_rpm = 0x144, .reg_pwm = 0x162, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
-	{ .reg_rpm = 0x146, .reg_pwm = 0x163, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
-	{ .reg_rpm = 0x148, .reg_pwm = 0x164, .label = "System Fan #3"}, // SYS Fan 3
-	{ .reg_rpm = 0x14A, .reg_pwm = 0x165, .label = "System Fan #4"}, // SYS Fan 4
-	{ .reg_rpm = 0x14C, .reg_pwm = 0x166, .label = "System Fan #5"}, // SYS Fan 5
-	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .label = "System Fan #6"}, // SYS Fan 6
+	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"}, // CPU Fan
+	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"}, // PUMP Fan
+	{ .reg_rpm = 0x144, .reg_pwm = 0x162, .reg_pwm_write = 0xA2A, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
+	{ .reg_rpm = 0x146, .reg_pwm = 0x163, .reg_pwm_write = 0xA2B, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
+	{ .reg_rpm = 0x148, .reg_pwm = 0x164, .reg_pwm_write = 0xA2C, .label = "System Fan #3"}, // SYS Fan 3
+	{ .reg_rpm = 0x14A, .reg_pwm = 0x165, .reg_pwm_write = 0xA2D, .label = "System Fan #4"}, // SYS Fan 4
+	{ .reg_rpm = 0x14C, .reg_pwm = 0x166, .reg_pwm_write = 0xA2E, .label = "System Fan #5"}, // SYS Fan 5
+	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .reg_pwm_write = 0xA2F, .label = "System Fan #6"}, // SYS Fan 6
 };
 
 //some MSI B850, X870, and Z890 boards
-//pwm registers copied from https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/pull/1644/files but still don't seem to be correct
+//PWM registers and control registers from LibreHardwareMonitor NCT6687DR (current master)
+//https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Nct677X.cs
 static struct nct6687_fan_config nct6687_fan_config_msi_alt[] = {
-	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .label = "CPU Fan"},
-	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .label = "Pump Fan"},
-	{ .reg_rpm = 0x15E, .reg_pwm = 0xE05, .label = "System Fan #1"},
-	{ .reg_rpm = 0x15C, .reg_pwm = 0xE04, .label = "System Fan #2"},
-	{ .reg_rpm = 0x15A, .reg_pwm = 0xE03, .label = "System Fan #3"},
-	{ .reg_rpm = 0x158, .reg_pwm = 0xE02, .label = "System Fan #4"},
-	{ .reg_rpm = 0x156, .reg_pwm = 0xE01, .label = "System Fan #5"},
-	{ .reg_rpm = 0x154, .reg_pwm = 0xE00, .label = "System Fan #6"},
+	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"},
+	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"},
+	{ .reg_rpm = 0x15E, .reg_pwm = 0xE05, .reg_pwm_write = 0xC70, .label = "System Fan #1"},
+	{ .reg_rpm = 0x15C, .reg_pwm = 0xE04, .reg_pwm_write = 0xC58, .label = "System Fan #2"},
+	{ .reg_rpm = 0x15A, .reg_pwm = 0xE03, .reg_pwm_write = 0xC40, .label = "System Fan #3"},
+	{ .reg_rpm = 0x158, .reg_pwm = 0xE02, .reg_pwm_write = 0xC28, .label = "System Fan #4"},
+	{ .reg_rpm = 0x156, .reg_pwm = 0xE01, .reg_pwm_write = 0xC10, .label = "System Fan #5"},
+	{ .reg_rpm = 0x154, .reg_pwm = 0xE00, .reg_pwm_write = 0xBF8, .label = "System Fan #6"},
 };
 
 enum nct6687_fan_config_type {
