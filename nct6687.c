@@ -631,6 +631,14 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	mutex_unlock(&data->EC_io_lock);
 }
 
+static void nct6687_write_all_curve(struct nct6687_data *data, u16 address, u16 value)
+{
+	for (int i = 0; i < 14; i = i + 2)
+	{
+		nct6687_write(data, address + i, value);
+	}
+}
+
 static void nct6687_update_temperatures(struct nct6687_data *data)
 {
 	int i;
@@ -981,7 +989,11 @@ static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, cons
 	nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
 	if (start_fan_cfg_update(data, index)) {
-		nct6687_write(data, NCT6687_REG_PWM_WRITE(index), val);
+		if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1) {
+			nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), val);
+		} else {
+			nct6687_write(data, NCT6687_REG_PWM_WRITE(index), val);
+		}
 		finish_fan_cfg_update(data, index);
 	}
 
@@ -1067,7 +1079,11 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 		nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
 		if (start_fan_cfg_update(data, index)) {
-			nct6687_write(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
+			if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1) {
+				nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
+			} else {
+				nct6687_write(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
+			}
 			finish_fan_cfg_update(data, index);
 		}
 
