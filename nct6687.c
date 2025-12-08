@@ -47,8 +47,23 @@
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #endif
 
-// Number of points in the fan curve registers for each fan.
-#define NCT6687_FAN_CURVE_POINTS 7
+#define NCT6687_FAN_CURVE_POINTS 7 	   	// Number of points in the fan curve registers for each fan.
+#define NCT6687_FAN_CURVE_POINT_SIZE 2 	// Each curve point occupies 2 registers
+
+/*
+ * Fan curve point structure.
+ * Each point in the fan curve consists of 2 consecutive registers.
+ * The exact meaning of each register is unclear - possibly:
+ * - register0: Temperature threshold or PWM value
+ * - register1: PWM value or unused
+ *
+ * Based on reverse engineering from LibreHardwareMonitor.
+ */
+struct nct6687_fan_curve_point
+{
+	u8 register0; // First register of curve point
+	u8 register1; // Second register of curve point (may be unused)
+} __attribute__((packed));
 
 enum kinds
 {
@@ -641,22 +656,26 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 }
 
 /*
- * Write PWM value to all 7 points of the fan curve.
- * 
+ * Write PWM value to all points of the fan curve.
+ *
  * On MSI boards with NCT6687DR, system fans (index > 1) only respond
- * to changes in the fan curve registers, not to direct PWM writes. 
- * This "brute force" method sets a flat curve where all temperature
- * points result in the same fan speed.
- * 
+ * to changes in the fan curve registers, not to direct PWM writes.
+ *
+ * This "brute force" method writes the same value to the first register
+ * of all 7 curve points, effectively creating a flat curve where the fan
+ * runs at constant speed regardless of temperature.
+ *
  * Based on LibreHardwareMonitor implementation:
  * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
  */
-static void nct6687_write_all_curve(struct nct6687_data *data, u16 address, u16 value)
+static void nct6687_write_all_curve(struct nct6687_data *data, u16 base_address, u8 value)
 {
-	// Write the same PWM value to all 7 curve points (registers at +0, +2, +4, +6, +8, +10, +12)
-	for (int i = 0; i < NCT6687_FAN_CURVE_POINTS * 2; i += 2)
+	for (int i = 0; i < NCT6687_FAN_CURVE_POINTS; i++)
 	{
-		nct6687_write(data, address + i, value);
+		u16 point_address = base_address + (i * NCT6687_FAN_CURVE_POINT_SIZE);
+		nct6687_write(data, point_address, value);
+		// Note: We only write to register0 of each point.
+		// register1 purpose is unclear and left unchanged.
 	}
 }
 
@@ -1009,10 +1028,14 @@ static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, cons
 	mode = (u8)(mode | bitMask);
 	nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
-	if (start_fan_cfg_update(data, index)) {
-		if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force) {
+	if (start_fan_cfg_update(data, index))
+	{
+		if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
+		{
 			nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), val);
-		} else {
+		}
+		else
+		{
 			nct6687_write(data, NCT6687_REG_PWM_WRITE(index), val);
 		}
 		finish_fan_cfg_update(data, index);
@@ -1099,10 +1122,14 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 
 		nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
-		if (start_fan_cfg_update(data, index)) {
-			if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force) {
+		if (start_fan_cfg_update(data, index))
+		{
+			if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
+			{
 				nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
-			} else {
+			}
+			else
+			{
 				nct6687_write(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
 			}
 			finish_fan_cfg_update(data, index);
