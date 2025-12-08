@@ -104,8 +104,6 @@ static const char *const nct6687_chip_names[] = {
 	"NCT6687D",
 };
 
-#define DRVNAME "nct6687"
-
 /*
  * Super-I/O constants and functions
  */
