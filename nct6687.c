@@ -37,6 +37,8 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#define DRVNAME "nct6687"
+
 #ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #endif
@@ -44,6 +46,8 @@
 #ifndef MAX
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #endif
+
+#define NCT6687_FAN_CURVE_POINTS 7
 
 enum kinds
 {
@@ -631,9 +635,21 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	mutex_unlock(&data->EC_io_lock);
 }
 
+/*
+ * Write PWM value to all 7 points of the fan curve.
+ * 
+ * On MSI boards with NCT6687DR, system fans (index > 1) only respond
+ * to changes in the fan curve registers, not to direct PWM writes. 
+ * This "brute force" method sets a flat curve where all temperature
+ * points result in the same fan speed.
+ * 
+ * Based on LibreHardwareMonitor implementation:
+ * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
+ */
 static void nct6687_write_all_curve(struct nct6687_data *data, u16 address, u16 value)
 {
-	for (int i = 0; i < 14; i = i + 2)
+	// Write the same PWM value to all 7 curve points (registers at +0, +2, +4, +6, +8, +10, +12)
+	for (int i = 0; i < NCT6687_FAN_CURVE_POINTS * 2; i += 2)
 	{
 		nct6687_write(data, address + i, value);
 	}
