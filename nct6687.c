@@ -7,10 +7,10 @@
  *
  * Derived from nct6683 driver
  * Copyright (C) 2013  Guenter Roeck <linux@roeck-us.net>
- * 
+ *
  * Inspired of LibreHardwareMonitor
  * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
- * 
+ *
  * Supports the following chips:
  *
  * Chip       #voltage   #fan    #pwm    #temp  chip ID
@@ -38,11 +38,11 @@
 #include <linux/slab.h>
 
 #ifndef MIN
-#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
 
 #ifndef MAX
-#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #endif
 
 #define NCT6687_FAN_CURVE_POINTS 7 // Number of points in the fan curve registers
@@ -63,12 +63,16 @@ enum pwm_enable
 
 static bool force;
 static bool manual;
+static bool msi_btf;
 
 module_param(force, bool, 0);
 MODULE_PARM_DESC(force, "Set to one to enable support for unknown vendors");
 
 module_param(manual, bool, 0);
 MODULE_PARM_DESC(manual, "Set voltage input and voltage label configured with external sensors file");
+
+module_param(msi_btf, bool, 0);
+MODULE_PARM_DESC(msi_btf, "Enable brute force fan curve writing (write to all 7 curve points)");
 
 static const char *const nct6687_device_names[] = {
 	"nct6683",
@@ -98,12 +102,12 @@ static const char *const nct6687_chip_names[] = {
 #define SIO_REG_ENABLE 0x30		 /* Logical device enable */
 #define SIO_REG_ADDR 0x60		 /* Logical device address (2 bytes) */
 
-#define SIO_NCT6681_ID          0xb270  /* for later */
-#define SIO_NCT6683_ID          0xc730
-#define SIO_NCT6686_ID          0xd440
-#define SIO_NCT6687D_ID         0xd450  /* NCT6687 ???*/
-#define SIO_NCT6687_ID          0xd590
-#define SIO_ID_MASK             0xFFF0
+#define SIO_NCT6681_ID 0xb270 /* for later */
+#define SIO_NCT6683_ID 0xc730
+#define SIO_NCT6686_ID 0xd440
+#define SIO_NCT6687D_ID 0xd450 /* NCT6687 ???*/
+#define SIO_NCT6687_ID 0xd590
+#define SIO_ID_MASK 0xFFF0
 
 static inline void superio_outb(int ioreg, int reg, int val)
 {
@@ -161,8 +165,8 @@ static inline void superio_exit(int ioreg)
 #define NCT6687_NUM_REG_FAN 8
 #define NCT6687_NUM_REG_PWM 8
 
-#define NCT6687_REG_TEMP(x) (0x100 + (x)*2)
-#define NCT6687_REG_VOLTAGE(x) (0x120 + (x)*2)
+#define NCT6687_REG_TEMP(x) (0x100 + (x) * 2)
+#define NCT6687_REG_VOLTAGE(x) (0x120 + (x) * 2)
 #define NCT6687_REG_FAN_RPM(x) (nct6687_fan_config_active[x].reg_rpm)
 #define NCT6687_REG_PWM(x) (nct6687_fan_config_active[x].reg_pwm)
 #define NCT6687_REG_PWM_WRITE(x) (nct6687_fan_config_active[x].reg_pwm_write)
@@ -173,27 +177,27 @@ static inline void superio_exit(int ioreg)
 #define NCT6687_REG_FANIN_CFG(x) (0xA00 + (x))
 #define NCT6687_REG_FANOUT_CFG(x) (0x1d0 + (x))
 
-#define NCT6687_REG_TEMP_HYST(x) (0x330 + (x))	/* 8 bit */
-#define NCT6687_REG_TEMP_MAX(x) (0x350 + (x))	/* 8 bit */
-#define NCT6687_REG_MON_HIGH(x) (0x370 + (x)*2) /* 8 bit */
-#define NCT6687_REG_MON_LOW(x) (0x371 + (x)*2)	/* 8 bit */
+#define NCT6687_REG_TEMP_HYST(x) (0x330 + (x))	  /* 8 bit */
+#define NCT6687_REG_TEMP_MAX(x) (0x350 + (x))	  /* 8 bit */
+#define NCT6687_REG_MON_HIGH(x) (0x370 + (x) * 2) /* 8 bit */
+#define NCT6687_REG_MON_LOW(x) (0x371 + (x) * 2)  /* 8 bit */
 
-#define NCT6687_REG_FAN_MIN(x) (0x3b8 + (x)*2) /* 16 bit */
+#define NCT6687_REG_FAN_MIN(x) (0x3b8 + (x) * 2) /* 16 bit */
 
 #define NCT6687_REG_FAN_CTRL_MODE(x) 0xA00
 #define NCT6687_REG_FAN_PWM_COMMAND(x) 0xA01
-#define NCT6687_FAN_CFG_REQ  0x80
+#define NCT6687_FAN_CFG_REQ 0x80
 #define NCT6687_FAN_CFG_DONE 0x40
 
-#define NCT6687_REG_FAN_ENGINE_STS          0xCF8    /* 8 bit */
-#define   NCT6687_FAN_PECI_CFG_ADJUSTED     (1 << 1)
-#define   NCT6687_FAN_UNFINISHED_FLAG       (1 << 2)
-#define   NCT6687_FAN_CFG_PHASE             (1 << 3)
-#define   NCT6687_FAN_CFG_INVALID           (1 << 4)
-#define   NCT6687_FAN_CFG_CHECK_DONE        (1 << 5)
-#define   NCT6687_FAN_CFG_LOCK              (1 << 6)
-#define   NCT6687_FAN_DRIVE_BY_MOD_SEL      (0 << 7)
-#define   NCT6687_FAN_DRIVE_BY_DEFAULT_VAL  (1 << 7)
+#define NCT6687_REG_FAN_ENGINE_STS 0xCF8 /* 8 bit */
+#define NCT6687_FAN_PECI_CFG_ADJUSTED (1 << 1)
+#define NCT6687_FAN_UNFINISHED_FLAG (1 << 2)
+#define NCT6687_FAN_CFG_PHASE (1 << 3)
+#define NCT6687_FAN_CFG_INVALID (1 << 4)
+#define NCT6687_FAN_CFG_CHECK_DONE (1 << 5)
+#define NCT6687_FAN_CFG_LOCK (1 << 6)
+#define NCT6687_FAN_DRIVE_BY_MOD_SEL (0 << 7)
+#define NCT6687_FAN_DRIVE_BY_DEFAULT_VAL (1 << 7)
 
 #define NCT6687_REG_BUILD_YEAR 0x604
 #define NCT6687_REG_BUILD_MONTH 0x605
@@ -324,42 +328,43 @@ struct nct6687_fan_config
 {
 	u16 reg_rpm;
 	u16 reg_pwm;
-	u16 reg_pwm_write;  // PWM write/control register
+	u16 reg_pwm_write; // PWM write/control register
 	const char *label;
 };
 
 static struct nct6687_fan_config nct6687_fan_config_default[] = {
-	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"}, // CPU Fan
-	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"}, // PUMP Fan
-	{ .reg_rpm = 0x144, .reg_pwm = 0x162, .reg_pwm_write = 0xA2A, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
-	{ .reg_rpm = 0x146, .reg_pwm = 0x163, .reg_pwm_write = 0xA2B, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
-	{ .reg_rpm = 0x148, .reg_pwm = 0x164, .reg_pwm_write = 0xA2C, .label = "System Fan #3"}, // SYS Fan 3
-	{ .reg_rpm = 0x14A, .reg_pwm = 0x165, .reg_pwm_write = 0xA2D, .label = "System Fan #4"}, // SYS Fan 4
-	{ .reg_rpm = 0x14C, .reg_pwm = 0x166, .reg_pwm_write = 0xA2E, .label = "System Fan #5"}, // SYS Fan 5
-	{ .reg_rpm = 0x14E, .reg_pwm = 0x167, .reg_pwm_write = 0xA2F, .label = "System Fan #6"}, // SYS Fan 6
+	{.reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"},		// CPU Fan
+	{.reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"},		// PUMP Fan
+	{.reg_rpm = 0x144, .reg_pwm = 0x162, .reg_pwm_write = 0xA2A, .label = "System Fan #1"}, // SYS Fan 1, Nil on others
+	{.reg_rpm = 0x146, .reg_pwm = 0x163, .reg_pwm_write = 0xA2B, .label = "System Fan #2"}, // SYS Fan 2, EZConn on others
+	{.reg_rpm = 0x148, .reg_pwm = 0x164, .reg_pwm_write = 0xA2C, .label = "System Fan #3"}, // SYS Fan 3
+	{.reg_rpm = 0x14A, .reg_pwm = 0x165, .reg_pwm_write = 0xA2D, .label = "System Fan #4"}, // SYS Fan 4
+	{.reg_rpm = 0x14C, .reg_pwm = 0x166, .reg_pwm_write = 0xA2E, .label = "System Fan #5"}, // SYS Fan 5
+	{.reg_rpm = 0x14E, .reg_pwm = 0x167, .reg_pwm_write = 0xA2F, .label = "System Fan #6"}, // SYS Fan 6
 };
 
-//some MSI B850, X870, and Z890 boards
-//PWM registers and control registers from LibreHardwareMonitor NCT6687DR (current master)
-//https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Nct677X.cs
+// some MSI B850, X870, and Z890 boards
+// PWM registers and control registers from LibreHardwareMonitor NCT6687DR (current master)
+// https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/Nct677X.cs
 static struct nct6687_fan_config nct6687_fan_config_msi_alt[] = {
-	{ .reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"},
-	{ .reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"},
-	{ .reg_rpm = 0x15E, .reg_pwm = 0xE05, .reg_pwm_write = 0xC70, .label = "System Fan #1"},
-	{ .reg_rpm = 0x15C, .reg_pwm = 0xE04, .reg_pwm_write = 0xC58, .label = "System Fan #2"},
-	{ .reg_rpm = 0x15A, .reg_pwm = 0xE03, .reg_pwm_write = 0xC40, .label = "System Fan #3"},
-	{ .reg_rpm = 0x158, .reg_pwm = 0xE02, .reg_pwm_write = 0xC28, .label = "System Fan #4"},
-	{ .reg_rpm = 0x156, .reg_pwm = 0xE01, .reg_pwm_write = 0xC10, .label = "System Fan #5"},
-	{ .reg_rpm = 0x154, .reg_pwm = 0xE00, .reg_pwm_write = 0xBF8, .label = "System Fan #6"},
+	{.reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"},
+	{.reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"},
+	{.reg_rpm = 0x15E, .reg_pwm = 0xE05, .reg_pwm_write = 0xC70, .label = "System Fan #1"},
+	{.reg_rpm = 0x15C, .reg_pwm = 0xE04, .reg_pwm_write = 0xC58, .label = "System Fan #2"},
+	{.reg_rpm = 0x15A, .reg_pwm = 0xE03, .reg_pwm_write = 0xC40, .label = "System Fan #3"},
+	{.reg_rpm = 0x158, .reg_pwm = 0xE02, .reg_pwm_write = 0xC28, .label = "System Fan #4"},
+	{.reg_rpm = 0x156, .reg_pwm = 0xE01, .reg_pwm_write = 0xC10, .label = "System Fan #5"},
+	{.reg_rpm = 0x154, .reg_pwm = 0xE00, .reg_pwm_write = 0xBF8, .label = "System Fan #6"},
 };
 
-enum nct6687_fan_config_type {
+enum nct6687_fan_config_type
+{
 	FAN_CONFIG_DEFAULT = 0,
-	FAN_CONFIG_MSI_ALT1, //some MSI B850, X870, and Z890 boards
+	FAN_CONFIG_MSI_ALT1, // some MSI B850, X870, and Z890 boards
 };
 
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
-static struct nct6687_fan_config (*nct6687_fan_config_active) = nct6687_fan_config_default;
+static struct nct6687_fan_config(*nct6687_fan_config_active) = nct6687_fan_config_default;
 
 static int nct6687_fan_config_op_write_handler(const char *val, const struct kernel_param *kp)
 {
@@ -371,13 +376,18 @@ static int nct6687_fan_config_op_write_handler(const char *val, const struct ker
 
 	s = strstrip(valcp);
 
-	if (strcmp(s, "default") == 0) {
+	if (strcmp(s, "default") == 0)
+	{
 		nct6687_fan_config_type = FAN_CONFIG_DEFAULT;
 		nct6687_fan_config_active = nct6687_fan_config_default;
-	} else if (strcmp(s, "msi_alt1") == 0) {
+	}
+	else if (strcmp(s, "msi_alt1") == 0)
+	{
 		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
 		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
-	} else {
+	}
+	else
+	{
 		return -EINVAL;
 	}
 
@@ -386,18 +396,19 @@ static int nct6687_fan_config_op_write_handler(const char *val, const struct ker
 
 static int nct6687_fan_config_op_read_handler(char *buffer, const struct kernel_param *kp)
 {
-	switch (nct6687_fan_config_type) {
-		case FAN_CONFIG_DEFAULT:
-			strcpy(buffer, "default");
-			break;
+	switch (nct6687_fan_config_type)
+	{
+	case FAN_CONFIG_DEFAULT:
+		strcpy(buffer, "default");
+		break;
 
-		case FAN_CONFIG_MSI_ALT1:
-			strcpy(buffer, "msi_alt1");
-			break;
+	case FAN_CONFIG_MSI_ALT1:
+		strcpy(buffer, "msi_alt1");
+		break;
 
-		default:
-			strcpy(buffer, "error");
-			break;
+	default:
+		strcpy(buffer, "error");
+		break;
 	}
 
 	return strlen(buffer);
@@ -405,8 +416,7 @@ static int nct6687_fan_config_op_read_handler(char *buffer, const struct kernel_
 
 static const struct kernel_param_ops nct6687_fan_config_op_ops = {
 	.set = nct6687_fan_config_op_write_handler,
-	.get = nct6687_fan_config_op_read_handler
-};
+	.get = nct6687_fan_config_op_read_handler};
 
 module_param_cb(fan_config, &nct6687_fan_config_op_ops, NULL, 0660);
 
@@ -486,8 +496,7 @@ struct sensor_device_attr_u
 	{                                                                   \
 		.dev_attr = __TEMPLATE_ATTR(_template, _mode, _show, _store),   \
 		.u.index = _index,                                              \
-		.s2 = false                                                     \
-	}
+		.s2 = false}
 
 #define SENSOR_DEVICE_TEMPLATE_2(_template, _mode, _show, _store,     \
 								 _nr, _index)                         \
@@ -495,8 +504,7 @@ struct sensor_device_attr_u
 		.dev_attr = __TEMPLATE_ATTR(_template, _mode, _show, _store), \
 		.u.s.index = _index,                                          \
 		.u.s.nr = _nr,                                                \
-		.s2 = true                                                    \
-	}
+		.s2 = true}
 
 #define SENSOR_TEMPLATE(_name, _template, _mode, _show, _store, _index)                                                        \
 	static struct sensor_device_template sensor_dev_template_##_name = SENSOR_DEVICE_TEMPLATE(_template, _mode, _show, _store, \
@@ -516,7 +524,7 @@ struct sensor_template_group
 
 static void nct6687_save_fan_control(struct nct6687_data *data, int index);
 
-static const char* nct6687_voltage_label(char* buf, int index)
+static const char *nct6687_voltage_label(char *buf, int index)
 {
 	if (manual)
 		sprintf(buf, "in%d", index);
@@ -635,12 +643,12 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 
 /*
  * Write PWM value to all 7 points of the fan curve.
- * 
+ *
  * On MSI boards with NCT6687DR, system fans (index > 1) only respond
- * to changes in the fan curve registers, not to direct PWM writes. 
+ * to changes in the fan curve registers, not to direct PWM writes.
  * This "brute force" method sets a flat curve where all temperature
  * points result in the same fan speed.
- * 
+ *
  * Based on LibreHardwareMonitor implementation:
  * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
  */
@@ -904,20 +912,23 @@ static bool start_fan_cfg_update(struct nct6687_data *data, int fan)
 	u8 engsts;
 
 	engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
-	if (!(engsts & NCT6687_FAN_CFG_LOCK) && (engsts & NCT6687_FAN_CFG_PHASE)) {
+	if (!(engsts & NCT6687_FAN_CFG_LOCK) && (engsts & NCT6687_FAN_CFG_PHASE))
+	{
 		pr_warn("Fan registers are already accessible\n");
 		return true;
 	}
 
 	/* Wait up to a second until config phase is done and config request is clear. */
-	for (i = 0; i < 1000; i++) {
+	for (i = 0; i < 1000; i++)
+	{
 		if (!(nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS) & NCT6687_FAN_CFG_PHASE) &&
-		    !(nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(fan)) & NCT6687_FAN_CFG_REQ))
+			!(nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND(fan)) & NCT6687_FAN_CFG_REQ))
 			break;
 		msleep(1);
 	}
 
-	if (i == 1000) {
+	if (i == 1000)
+	{
 		pr_err("EC is stuck in configuration phase for too long\n");
 		return false;
 	}
@@ -925,14 +936,16 @@ static bool start_fan_cfg_update(struct nct6687_data *data, int fan)
 	nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(fan), NCT6687_FAN_CFG_REQ);
 
 	/* Wait up to a second until EC enters config phase and unlocks the register set. */
-	for (i = 0; i < 1000; i++) {
-	    engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
+	for (i = 0; i < 1000; i++)
+	{
+		engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
 		if (!(engsts & NCT6687_FAN_CFG_LOCK) && (engsts & NCT6687_FAN_CFG_PHASE))
 			break;
 		msleep(1);
 	}
 
-	if (i == 1000) {
+	if (i == 1000)
+	{
 		pr_err("Failed to gain access to fan configuration registers\n");
 		return false;
 	}
@@ -947,7 +960,8 @@ static void finish_fan_cfg_update(struct nct6687_data *data, int fan)
 	u8 donecmd;
 
 	engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
-	if ((engsts & NCT6687_FAN_CFG_LOCK) || !(engsts & NCT6687_FAN_CFG_PHASE)) {
+	if ((engsts & NCT6687_FAN_CFG_LOCK) || !(engsts & NCT6687_FAN_CFG_PHASE))
+	{
 		pr_warn("Fan registers are already not accessible\n");
 		return;
 	}
@@ -963,7 +977,8 @@ static void finish_fan_cfg_update(struct nct6687_data *data, int fan)
 	nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND(fan), donecmd);
 
 	/* Wait up to a second until EC checks new configuration. */
-	for (i = 0; i < 1000; i++) {
+	for (i = 0; i < 1000; i++)
+	{
 		engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
 		if (engsts & NCT6687_FAN_CFG_CHECK_DONE)
 			break;
@@ -1002,10 +1017,14 @@ static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, cons
 	mode = (u8)(mode | bitMask);
 	nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
-	if (start_fan_cfg_update(data, index)) {
-		if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1) {
+	if (start_fan_cfg_update(data, index))
+	{
+		if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_btf)
+		{
 			nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), val);
-		} else {
+		}
+		else
+		{
 			nct6687_write(data, NCT6687_REG_PWM_WRITE(index), val);
 		}
 		finish_fan_cfg_update(data, index);
@@ -1092,10 +1111,14 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 
 		nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
 
-		if (start_fan_cfg_update(data, index)) {
-			if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1) {
+		if (start_fan_cfg_update(data, index))
+		{
+			if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_btf)
+			{
 				nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
-			} else {
+			}
+			else
+			{
 				nct6687_write(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
 			}
 			finish_fan_cfg_update(data, index);
@@ -1221,11 +1244,11 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 		data->pwm_enable[i] = nct6687_get_pwm_enable(data, i);
 
 		pr_debug("nct6687_setup_pwm[%d], addr=%04X, pwm=%d, pwm_enable=%d, _initialFanPwmCommand=%d\n",
-		         i,
-		         NCT6687_REG_FAN_PWM_COMMAND(i),
-		         data->pwm[i],
-		         data->pwm_enable[i],
-		         data->_initialFanPwmCommand[i]);
+				 i,
+				 NCT6687_REG_FAN_PWM_COMMAND(i),
+				 data->pwm[i],
+				 data->pwm_enable[i],
+				 data->_initialFanPwmCommand[i]);
 	}
 }
 
@@ -1386,26 +1409,28 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 
 	pr_debug("found chip ID: 0x%04x\n", val);
 
-       switch (val & SIO_ID_MASK) {
-        case SIO_NCT6683_ID:
-                sio_data->kind = nct6683;
-                break;
-        case SIO_NCT6686_ID:
-                sio_data->kind = nct6686;
-                break;
-        case SIO_NCT6687D_ID:
-        case SIO_NCT6687_ID:
-                sio_data->kind = nct6687;
-                break;
-        default:
-		if (force){
-                 sio_data->kind = nct6687;
-                 break;
+	switch (val & SIO_ID_MASK)
+	{
+	case SIO_NCT6683_ID:
+		sio_data->kind = nct6683;
+		break;
+	case SIO_NCT6686_ID:
+		sio_data->kind = nct6686;
+		break;
+	case SIO_NCT6687D_ID:
+	case SIO_NCT6687_ID:
+		sio_data->kind = nct6687;
+		break;
+	default:
+		if (force)
+		{
+			sio_data->kind = nct6687;
+			break;
 		}
-                if (val != 0xffff)
-                        pr_debug("unsupported chip ID: 0x%04x\n", val);
-                goto fail;
-        }
+		if (val != 0xffff)
+			pr_debug("unsupported chip ID: 0x%04x\n", val);
+		goto fail;
+	}
 
 	/* We have a known chip, find the HWM I/O address */
 	superio_select(sioaddr, NCT6687_LD_HWM);
