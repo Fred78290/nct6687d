@@ -49,6 +49,7 @@
 
 #define NCT6687_FAN_CURVE_POINTS 7 	   	// Number of points in the fan curve registers for each fan.
 #define NCT6687_FAN_CURVE_POINT_SIZE 2 	// Each curve point occupies 2 registers
+#define NCT6687_FIRST_SYSTEM_FAN_INDEX 2
 
 /*
  * Fan curve point structure.
@@ -206,14 +207,14 @@ static inline void superio_exit(int ioreg)
 #define NCT6687_FAN_CFG_DONE 0x40
 
 #define NCT6687_REG_FAN_ENGINE_STS          0xCF8    /* 8 bit */
-#define   NCT6687_FAN_PECI_CFG_ADJUSTED     (1 << 1)
-#define   NCT6687_FAN_UNFINISHED_FLAG       (1 << 2)
-#define   NCT6687_FAN_CFG_PHASE             (1 << 3)
-#define   NCT6687_FAN_CFG_INVALID           (1 << 4)
-#define   NCT6687_FAN_CFG_CHECK_DONE        (1 << 5)
-#define   NCT6687_FAN_CFG_LOCK              (1 << 6)
-#define   NCT6687_FAN_DRIVE_BY_MOD_SEL      (0 << 7)
-#define   NCT6687_FAN_DRIVE_BY_DEFAULT_VAL  (1 << 7)
+#define NCT6687_FAN_PECI_CFG_ADJUSTED       (1 << 1)
+#define NCT6687_FAN_UNFINISHED_FLAG         (1 << 2)
+#define NCT6687_FAN_CFG_PHASE               (1 << 3)
+#define NCT6687_FAN_CFG_INVALID             (1 << 4)
+#define NCT6687_FAN_CFG_CHECK_DONE          (1 << 5)
+#define NCT6687_FAN_CFG_LOCK                (1 << 6)
+#define NCT6687_FAN_DRIVE_BY_MOD_SEL        (0 << 7)
+#define NCT6687_FAN_DRIVE_BY_DEFAULT_VAL    (1 << 7)
 
 #define NCT6687_REG_BUILD_YEAR 0x604
 #define NCT6687_REG_BUILD_MONTH 0x605
@@ -656,7 +657,7 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 /*
  * Write PWM value to all points of the fan curve.
  *
- * On MSI boards with NCT6687DR, system fans (index > 1) only respond
+ * On MSI boards with NCT6687DR, system fans (index >= 2) only respond
  * to changes in the fan curve registers, not to direct PWM writes.
  *
  * This "brute force" method writes the same value to the first register
@@ -1028,7 +1029,7 @@ static ssize_t store_pwm(struct device *dev, struct device_attribute *attr, cons
 
 	if (start_fan_cfg_update(data, index))
 	{
-		if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
+		if (index >= NCT6687_FIRST_SYSTEM_FAN_INDEX && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
 		{
 			nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), val);
 		}
@@ -1122,7 +1123,7 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 
 		if (start_fan_cfg_update(data, index))
 		{
-			if (index > 1 && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
+			if (index >= NCT6687_FIRST_SYSTEM_FAN_INDEX && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
 			{
 				nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
 			}
