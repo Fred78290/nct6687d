@@ -37,8 +37,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-#define DRVNAME "nct6687"
-
 #ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #endif
@@ -47,7 +45,7 @@
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #endif
 
-#define NCT6687_FAN_CURVE_POINTS 7
+#define NCT6687_FAN_CURVE_POINTS 7 // Number of points in the fan curve registers
 
 enum kinds
 {
