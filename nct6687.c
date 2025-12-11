@@ -26,6 +26,7 @@
 
 #include <linux/acpi.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -377,6 +378,71 @@ static struct nct6687_fan_config nct6687_fan_config_msi_alt[] = {
 enum nct6687_fan_config_type {
 	FAN_CONFIG_DEFAULT = 0,
 	FAN_CONFIG_MSI_ALT1, //some MSI B850, X870, and Z890 boards
+};
+
+/*
+ * MSI boards that require fan_config=msi_alt1 for proper system fan control
+ * These boards use different PWM control registers and require 7-point fan curve writes
+ * 
+ * Based on LibreHardwareMonitor NCT6687DR implementation:
+ * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
+ */
+static const struct dmi_system_id nct6687_msi_alt_boards[] __initconst = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "MAG Z890 TOMAHAWK WIFI (MS-7E32)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd. "),
+			DMI_MATCH(DMI_BOARD_NAME, "MAG X870E TOMAHAWK WIFI (MS-7E26)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "MPG X870E CARBON WIFI (MS-7E27)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "MAG B850M MORTAR WIFI (MS-7E28)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 ACE (MS-7E29)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "MPG Z890 CARBON WIFI (MS-7E30)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-A WIFI (MS-7E34)"),
+		},
+	},
+	{
+		. matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "MPG B850 EDGE TI WIFI (MS-7E35)"),
+		},
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "PRO X870-P WIFI (MS-7E36)"),
+		},
+	},
+	{ }
 };
 
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
@@ -1496,6 +1562,15 @@ static int __init sensors_nct6687_init(void)
 	bool found = false;
 	int address;
 	int i, err;
+
+	/* Auto-detect MSI boards that require msi_alt1 configuration */
+	if (nct6687_fan_config_type == FAN_CONFIG_DEFAULT) {
+		if (dmi_check_system(nct6687_msi_alt_boards)) {
+			pr_info("Detected MSI board requiring msi_alt1 fan configuration\n");
+			nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
+			nct6687_fan_config_active = nct6687_fan_config_msi_alt;
+		}
+	}
 
 	err = platform_driver_register(&nct6687_driver);
 	if (err)
