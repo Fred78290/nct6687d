@@ -718,25 +718,29 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 }
 
 /*
- * Write PWM value to all points of the fan curve.
+ * Write PWM value to all 7 points of the MSI fan curve.
  *
  * On some MSI boards with NCT6687D, system fans (index >= 2) only respond
  * to changes in the fan curve registers, not to direct PWM writes.
  *
- * This "brute force" method writes the same value to both registers
- * of all 7 curve points, effectively creating a flat curve where the fan
- * runs at constant speed regardless of temperature.
+ * Each fan curve point consists of 2 consecutive registers:
+ *   - register0 (offset +0): Temperature threshold or PWM value
+ *   - register1 (offset +1): Purpose unclear, left unchanged
  *
- * Based on LibreHardwareMonitor implementation:
+ * This "brute force" method writes the PWM value to register0 of all 7 curve
+ * points (every 2nd register), creating a flat curve where the fan runs at
+ * constant speed regardless of temperature.
+ *
+ * Based on LibreHardwareMonitor implementation (count += 2 loop):
  * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
  */
 static void nct6687_write_all_curve(struct nct6687_data *data, u16 base_address, u8 value)
 {
 	int i;
-	// Write 7-point fan curve (14 registers total: 7 points × 2 registers per point)
-	for (i = 0; i < NCT6687_FAN_CURVE_POINTS * NCT6687_FAN_CURVE_POINT_SIZE; i++)
+	// Write to register0 of all 7 curve points (skipping register1)
+	for (i = 0; i < NCT6687_FAN_CURVE_POINTS; i++)
 	{
-		nct6687_write(data, base_address + i, value);
+		nct6687_write(data, base_address + (i * NCT6687_FAN_CURVE_POINT_SIZE), value);
 	}
 }
 
