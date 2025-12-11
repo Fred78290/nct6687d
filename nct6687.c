@@ -1201,6 +1201,7 @@ static void nct6687_restore_fan_control(struct nct6687_data *data, int index)
 
 		if (start_fan_cfg_update(data, index))
 		{
+			// Use same write method as store_pwm: brute force for MSI alt boards, normal write otherwise
 			if (index >= NCT6687_FIRST_SYSTEM_FAN_INDEX && nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 && msi_fan_brute_force)
 			{
 				nct6687_write_all_curve(data, NCT6687_REG_PWM_WRITE(index), data->_initialFanPwmCommand[index]);
