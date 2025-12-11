@@ -1386,7 +1386,8 @@ static int nct6687_probe(struct platform_device *pdev)
 	{
 		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
 		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
-		dev_info(dev, "Detected MSI board; using alternative fan configuration\n");
+		dev_info(dev, "Detected MSI board with msi_fan_brute_force %s\n",
+				 msi_fan_brute_force ? "enabled" : "disabled");
 	}
 
 	pr_debug("nct6687_probe addr=0x%04X, sioreg=0x%04X\n", data->addr, data->sioreg);
