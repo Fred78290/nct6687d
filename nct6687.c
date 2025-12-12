@@ -384,59 +384,53 @@ enum nct6687_fan_config_type
 
 /*
  * MSI boards that require fan_config=msi_alt1 for proper system fan control
- * These boards use different PWM control registers and require 7-point fan curve writes
+ * These boards use different PWM control registers and require 7-point fan curve writes to adjust system fan speeds
  *
- * Board names with MS-7Exx codes are unique enough - no vendor match needed.
- *
- * Based on LibreHardwareMonitor implementation:
- * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
+ * Based on LibreHardwareMonitor NCT6687DR chip detection:
+ * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcIO.cs
  */
 static const struct dmi_system_id nct6687_msi_alt_boards[] __initconst = {
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MAG Z890 TOMAHAWK WIFI (MS-7E32)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MAG X870E TOMAHAWK WIFI (MS-7E26)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MPG X870E CARBON WIFI (MS-7E27)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MAG B850M MORTAR WIFI (MS-7E28)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 ACE (MS-7E29)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MPG Z890 CARBON WIFI (MS-7E30)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-A WIFI (MS-7E34)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MPG B850 EDGE TI WIFI (MS-7E35)"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "PRO X870-P WIFI (MS-7E36)"),
-		},
-	},
+	// B840 Series
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B840-P WIFI (MS-7E57)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B840M GAMING PLUS WIFI6E (MS-7E77)")}},
+
+	// B850 Series
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PLUS WIFI (MS-7E56)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PLUS WIFI6E (MS-7E80)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850M GAMING PLUS WIFI6E (MS-7E81)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850-P WIFI (MS-7E56)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850M-A WIFI (MS-7E66)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850M-P WIFI (MS-7E71)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG B850M MORTAR WIFI (MS-7E61)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG B850 TOMAHAWK MAX WIFI (MS-7E62)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG B850 EDGE TI WIFI (MS-7E62)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG B850I EDGE TI WIFI (MS-7E79)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850MPOWER (MS-7E83)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850-S WIFI6E (MS-7E80)")}},
+
+	// X870 Series
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "X870 GAMING PLUS WIFI (MS-7E47)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "X870E GAMING PLUS WIFI (MS-7E70)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG X870 TOMAHAWK WIFI (MS-7E51)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO X870-P WIFI (MS-7E47)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO X870E-P WIFI (MS-7E70)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG X870E TOMAHAWK WIFI (MS-7E59)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG X870E CARBON WIFI (MS-7E49)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG X870E EDGE TI WIFI (MS-7E59)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG X870E GODLIKE (MS-7E48)")}},
+
+	// Z890 Series
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 ACE (MS-7E22)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG Z890M ACE (MS-7E23)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890 CARBON WIFI (MS-7E17)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890M CARBON WIFI (MS-7E18)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890 EDGE TI WIFI (MS-7E19)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890I EDGE TI WIFI (MS-7E33)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "Z890 GAMING PLUS WIFI (MS-7E34)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG Z890 TOMAHAWK WIFI (MS-7E32)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-A WIFI (MS-7E32)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-P WIFI (MS-7E34)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-S WIFI (MS-7E54)")}},
 	{}};
 
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default

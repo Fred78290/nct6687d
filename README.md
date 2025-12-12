@@ -201,8 +201,8 @@ chip "nct6687-*"
   
   Motherboards which need this will show CPU/Pump RPMs but no data on System fans.
 
-  `msi_alt1` is automatically enabled for supported MSI motherboards (MAG Z890 TOMAHAWK WIFI, 
-  PRO Z890-A WIFI, MPG Z890 CARBON WIFI, MPG Z890I EDGE TI WIFI, PRO X870-P WIFI, and several others).
+  `msi_alt1` is automatically enabled for 36 supported MSI motherboards including B840, B850, X870, 
+  X870E, and Z890 series (MAG Z890 TOMAHAWK WIFI, PRO Z890-A WIFI, MPG Z890 CARBON WIFI, and many others).
   Manual configuration is only needed for unsupported boards.
 
 - **msi_fan_brute_force** (bool) (default: false) **[ALPHA]**
