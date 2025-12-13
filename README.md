@@ -201,7 +201,18 @@ chip "nct6687-*"
   
   Motherboards which need this will show CPU/Pump RPMs but no data on System fans.
 
-  `msi_alt1` is known to work with come MSI Motherboards using the MSI B850, X870, or Z890 chipsets
+  `msi_alt1` is automatically enabled for 36 supported MSI motherboards including B840, B850, X870, 
+  X870E, and Z890 series (MAG Z890 TOMAHAWK WIFI, PRO Z890-A WIFI, MPG Z890 CARBON WIFI, and many others).
+  Manual configuration is only needed for unsupported boards.
+
+- **msi_fan_brute_force** (bool) (default: false) **[ALPHA]**
+  For MSI motherboards with `msi_alt1` configuration: When enabled, writes PWM values to all 7 fan 
+  curve control points. This may help with fan control on some MSI boards where standard PWM writes 
+  don't take effect immediately. Only affects system fans controlled by the BIOS. Not the CPU fan or pump fan. 
+  
+  This implementation is based on register mappings from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
+  
+  Usage: `modprobe nct6687 msi_fan_brute_force=1`
 
 ## CONFIGURATION VIA SYSFS
 
@@ -295,4 +306,10 @@ systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
 * add `softdep nct6687 pre: i2c_i801` to e.g. `/etc/modprobe.d/sensors.conf`.
 
 ### Only CPU & Pump show RPM values
-If you have an MSI motherboard, try using module parameter `fan_config=msi_alt1`
+On MSI motherboards, `msi_alt1` configuration is automatically detected and enabled.
+You can verify this in `dmesg` after loading the module:
+```
+nct6687 nct6687.2592: Detected MSI board; using alternative fan configuration (msi_alt1)
+```
+
+If you have a non-MSI motherboard with this issue, try using module parameter `fan_config=msi_alt1` manually.
