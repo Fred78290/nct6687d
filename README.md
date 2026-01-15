@@ -212,6 +212,8 @@ chip "nct6687-*"
   
   Usage: `modprobe nct6687 msi_fan_brute_force=1`
 
+  Note: This option requires blacklisting the `nct6683` module to prevent it from loading instead of `nct6687`. See the [Issues](#issues) section for detailed instructions.
+
 <details>
   <summary>Supported MSI boards for ("msi_alt1" and "msi_fan_brute_force")</summary>
 
@@ -344,7 +346,7 @@ systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
 ```
 * add `softdep nct6687 pre: i2c_i801` to e.g. `/etc/modprobe.d/sensors.conf`.
 
-###  No fan RPM; Or FAN Stop at "60%" with enabled `msi_fan_brute_force` boards
+### Loading `msi_fan_brute_force` parameter fails
 - Symptom: No RPM value is displayed for some fans in the sensor data; or the following behavior is observed: the fan stops at 60%
 - Solution steps:
   1. Prevent the wrong driver from loading:
