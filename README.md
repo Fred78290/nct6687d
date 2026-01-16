@@ -364,11 +364,8 @@ systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
   4. Reboot and verify the module loads correctly.   
    
 
-- After installation run:
-  ```sh
-  sudo sensors-detect --auto
-  ```
-  and check `/etc/conf.d/lm-sensors.conf` (or your distro's equivalent) that `HWMON_MODULES` includes `nct6687` (e.g., `HWMON_MODULES="coretemp nct6687 ..."`) and not `nct6683` (e.g., `HWMON_MODULES="coretemp nct6687 nct6683 ..."`) to ensure the correct driver is loaded at boot.
+- After installation:
+  Check `/etc/conf.d/lm-sensors.conf` (or your distro's equivalent) that `HWMON_MODULES` not includes `nct6683` (e.g., `HWMON_MODULES="coretemp nct6683 ..."`) to ensure the correct driver is loaded at boot.
 
 ### Only CPU & Pump show RPM values
 On MSI motherboards, `msi_alt1` configuration is automatically detected and enabled.
