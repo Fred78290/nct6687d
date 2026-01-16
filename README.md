@@ -201,11 +201,9 @@ chip "nct6687-*"
   
   Motherboards which need this will show CPU/Pump RPMs but no data on System fans.
 
-  `msi_alt1` is automatically enabled for 36 supported MSI motherboards including B840, B850, X870, 
-  X870E, and Z890 series (MAG Z890 TOMAHAWK WIFI, PRO Z890-A WIFI, MPG Z890 CARBON WIFI, and many others).
-  Manual configuration is only needed for unsupported boards.
+  `msi_alt1` is automatically enabled for supported MSI motherboards. Manual configuration is only needed for unsupported boards.
 
-- **msi_fan_brute_force** (bool) (default: false) **[ALPHA]**
+- **msi_fan_brute_force** (bool) (default: false) **[BETA]**
   For MSI motherboards with `msi_alt1` configuration: When enabled, writes PWM values to all 7 fan 
   curve control points. This may help with fan control on some MSI boards where standard PWM writes 
   don't take effect immediately. Only affects system fans controlled by the BIOS. Not the CPU fan or pump fan. 
@@ -213,6 +211,49 @@ chip "nct6687-*"
   This implementation is based on register mappings from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
   
   Usage: `modprobe nct6687 msi_fan_brute_force=1`
+
+  Note: This option requires blacklisting the `nct6683` module to prevent it from loading instead of `nct6687`. See the [Issues](#issues) section for detailed instructions.
+
+<details>
+  <summary>Supported MSI boards for ("msi_alt1" and "msi_fan_brute_force")</summary>
+
+  | Board | DMI |
+  | --- | ---: |
+  | PRO B840-P WIFI | MS-7E57 |
+  | B840M GAMING PLUS WIFI6E | MS-7E77 |
+  | B850 GAMING PLUS WIFI | MS-7E56 |
+  | B850 GAMING PLUS WIFI6E | MS-7E80 |
+  | B850M GAMING PLUS WIFI6E | MS-7E81 |
+  | PRO B850-P WIFI | MS-7E56 |
+  | PRO B850M-A WIFI | MS-7E66 |
+  | PRO B850M-P WIFI | MS-7E71 |
+  | MAG B850M MORTAR WIFI | MS-7E61 |
+  | MAG B850 TOMAHAWK MAX WIFI | MS-7E62 |
+  | MPG B850 EDGE TI WIFI | MS-7E62 |
+  | MPG B850I EDGE TI WIFI | MS-7E79 |
+  | B850MPOWER | MS-7E83 |
+  | PRO B850-S WIFI6E | MS-7E80 |
+  | X870 GAMING PLUS WIFI | MS-7E47 |
+  | X870E GAMING PLUS WIFI | MS-7E70 |
+  | MAG X870 TOMAHAWK WIFI | MS-7E51 |
+  | PRO X870-P WIFI | MS-7E47 |
+  | PRO X870E-P WIFI | MS-7E70 |
+  | MAG X870E TOMAHAWK WIFI | MS-7E59 |
+  | MPG X870E CARBON WIFI | MS-7E49 |
+  | MPG X870E EDGE TI WIFI | MS-7E59 |
+  | MEG X870E GODLIKE | MS-7E48 |
+  | MEG Z890 ACE | MS-7E22 |
+  | MEG Z890M ACE | MS-7E23 |
+  | MPG Z890 CARBON WIFI | MS-7E17 |
+  | MPG Z890M CARBON WIFI | MS-7E18 |
+  | MPG Z890 EDGE TI WIFI | MS-7E19 |
+  | MPG Z890I EDGE TI WIFI | MS-7E33 |
+  | Z890 GAMING PLUS WIFI | MS-7E34 |
+  | MAG Z890 TOMAHAWK WIFI | MS-7E32 |
+  | PRO Z890-A WIFI | MS-7E32 |
+  | PRO Z890-P WIFI | MS-7E34 |
+  | PRO Z890-S WIFI | MS-7E54 |
+</details>
 
 ## CONFIGURATION VIA SYSFS
 
@@ -304,6 +345,27 @@ kernel: nct6687: EC base I/O port unconfigured
 systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
 ```
 * add `softdep nct6687 pre: i2c_i801` to e.g. `/etc/modprobe.d/sensors.conf`.
+
+### Loading `msi_fan_brute_force` parameter fails
+- Symptom: No RPM value is displayed for some fans in the sensor data; or the following behavior is observed: the fan stops at 60%
+- Solution steps:
+  1. Prevent the wrong driver from loading:
+     ```sh
+     echo "blacklist nct6683" | sudo tee /etc/modprobe.d/nct6683_blacklist.conf
+     ```
+  2. Set module option to enable brute-force fan curve writes for MSI boards:
+     ```sh
+     echo "options nct6687 msi_fan_brute_force=1" | sudo tee /etc/modprobe.d/nct6687_msi.conf
+     ```
+  3. Ensure the `nct6687` module is loaded at boot:
+     ```sh
+     echo "nct6687" | sudo tee /etc/modules-load.d/nct6687.conf
+     ```
+  4. Reboot and verify the module loads correctly.   
+   
+
+- After installation:
+  Check `/etc/conf.d/lm-sensors.conf` (or your distro's equivalent) that `HWMON_MODULES` not includes `nct6683` (e.g., `HWMON_MODULES="coretemp nct6683 ..."`) to ensure the correct driver is loaded at boot.
 
 ### Only CPU & Pump show RPM values
 On MSI motherboards, `msi_alt1` configuration is automatically detected and enabled.
