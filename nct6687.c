@@ -1509,7 +1509,6 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 	case SIO_NCT6686_ID:
 		sio_data->kind = nct6686;
 		break;
-	case SIO_NCT6687D_ID:
 	case SIO_NCT6687_ID:
 		sio_data->kind = nct6687;
 		break;
