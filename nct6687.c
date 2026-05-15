@@ -388,6 +388,14 @@ enum nct6687_fan_config_type
  *
  * Based on LibreHardwareMonitor NCT6687DR chip detection:
  * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcIO.cs
+ *
+ * NOTE: only NCT6687DR-equipped MSI boards (B840/B850/X870/X870E/Z890) belong
+ * here. Earlier MSI series with the plain NCT6687D chip (B650/B660/X670/Z690/
+ * Z790, etc.) use the *default* register mapping at 0x140-0x14E and must NOT
+ * be added to this list. Forcing fan_config=msi_alt1 on those boards reads
+ * EC offsets 0x154-0x15E which are unused (zero) on non-DR variants, causing
+ * all SYS_FAN inputs to report 0 RPM. See issue #167 for a worked example
+ * on MSI MPG B650 CARBON WIFI (MS-7D74).
  */
 static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	// B840 Series
@@ -1385,6 +1393,17 @@ static int nct6687_probe(struct platform_device *pdev)
 		dev_info(dev, "MSI fan brute force mode: %s\n",
 				 msi_fan_brute_force ? "enabled" : "disabled");
 	}
+
+	/*
+	 * Always announce the active fan config so module parameter mismatches
+	 * (e.g. a stale fan_config=msi_alt1 in /etc/modprobe.d/ on a board
+	 * that needs the default mapping) are obvious from dmesg.
+	 */
+	dev_info(dev, "active fan config=%s, SYS_FAN reg_rpm=0x%04X/0x%04X/0x%04X\n",
+		 nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 ? "msi_alt1" : "default",
+		 nct6687_fan_config_active[2].reg_rpm,
+		 nct6687_fan_config_active[3].reg_rpm,
+		 nct6687_fan_config_active[4].reg_rpm);
 
 	pr_debug("nct6687_probe addr=0x%04X, sioreg=0x%04X\n", data->addr, data->sioreg);
 
