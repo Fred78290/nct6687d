@@ -375,6 +375,25 @@ On MSI motherboards, `msi_alt1` configuration is automatically detected and enab
 You can verify this in `dmesg` after loading the module:
 ```
 nct6687 nct6687.2592: Detected MSI board; using alternative fan configuration (msi_alt1)
+nct6687 nct6687.2592: active fan config=msi_alt1, SYS_FAN reg_rpm=0x015E/0x015C/0x015A
 ```
 
+The second line is always printed and shows the EC offsets the driver reads
+for SYS_FAN #1/#2/#3. Use it to confirm the right mapping is active.
+
 If you have a non-MSI motherboard with this issue, try using module parameter `fan_config=msi_alt1` manually.
+
+> **Warning — do NOT force `fan_config=msi_alt1` on non-listed MSI boards.**
+> Only the NCT6687DR-equipped MSI families (B840/B850/X870/X870E/Z890) are
+> compatible with `msi_alt1`. Earlier MSI series with the plain NCT6687D chip
+> — including **B650/B660/X670/Z690/Z790** — use the *default* register
+> mapping and are auto-detected correctly without any module parameter.
+>
+> If you previously set `options nct6687 fan_config=msi_alt1` in
+> `/etc/modprobe.d/` on one of those boards as a troubleshooting attempt,
+> remove it: forcing `msi_alt1` makes the driver read EC offsets
+> `0x154-0x15E` which are zero on non-DR variants, causing all SYS_FAN to
+> report `0 RPM` while CPU_FAN keeps working. The `active fan config=...`
+> dmesg line above will reveal a stale forced setting at a glance.
+>
+> Reference: issue #167 (MSI MPG B650 CARBON WIFI, MS-7D74).
