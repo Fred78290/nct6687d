@@ -512,8 +512,13 @@ struct nct6687_data
 	bool valid;					/* true if following fields are valid */
 	unsigned long last_updated; /* In jiffies */
 
-	/* Voltage values */
-	s16 voltage[3][NCT6687_NUM_REG_VOLTAGE]; // 0 = current 1 = min 2 = max
+	/*
+	 * Voltage values in mV (hwmon ABI). s32 rather than s16 because a
+	 * 12-bit raw reading multiplied by the +12V definition's multiplier
+	 * of 12 peaks around 49140 mV — past the 32767 ceiling of s16.
+	 * Index 0 = current, 1 = running min, 2 = running max.
+	 */
+	s32 voltage[3][NCT6687_NUM_REG_VOLTAGE];
 
 	/* Temperature values */
 	s32 temperature[3][NCT6687_NUM_REG_TEMP]; // 0 = current 1 = min 2 = max
@@ -775,7 +780,12 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
-		s16 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
+		/*
+		 * value (max 4095) * multiplier (12 for +12V rail) reaches
+		 * ~49140 mV, which overflows s16. Use s32 to keep rail values
+		 * correct under worst-case inputs.
+		 */
+		s32 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = MIN(voltage, data->voltage[1][index]);
@@ -1295,7 +1305,7 @@ static void nct6687_setup_voltages(struct nct6687_data *data)
 		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
-		s16 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
+		s32 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = voltage;
