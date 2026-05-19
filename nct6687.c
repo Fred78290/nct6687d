@@ -75,12 +75,35 @@ enum kinds
 	nct6687
 };
 
+/*
+ * pwm*_enable values follow the Linux hwmon ABI
+ * (Documentation/hwmon/sysfs-interface):
+ *
+ *   1 - manual fan speed control (write pwm*)
+ *   2 - automatic / "thermal cruise" — hand control back to the EC's
+ *       firmware fan curve. NCT668x exposes several automatic profiles
+ *       internally; this driver does not currently let userspace pick
+ *       between them, so 2 simply means "clear the manual-control bit".
+ *
+ * The driver historically reported 99 for the auto state and rejected
+ * any write other than 1 or 99. That deviated from the ABI and made
+ * standard userspace (lm-sensors `fancontrol`, ventd, etc.) trip on
+ * `-EINVAL` when restoring auto mode on shutdown. Both values are now
+ * accepted in store_pwm_enable; show_pwm_enable always returns the
+ * ABI-conforming 1 or 2.
+ */
 enum pwm_enable
 {
 	manual_mode = 1,
-	// There are multiple automatic modes, none of which is configurable by this module yet.
-	firmware_mode = 99,
+	auto_mode = 2,
 };
+
+/*
+ * Legacy auto-mode value historically reported / accepted by this
+ * driver. Still accepted in store_pwm_enable for callers that scripted
+ * around the old behaviour; never reported in show_pwm_enable.
+ */
+#define NCT6687_LEGACY_AUTO_MODE 99
 
 static bool force;
 static bool manual;
@@ -794,7 +817,7 @@ static enum pwm_enable nct6687_get_pwm_enable(struct nct6687_data *data, int ind
 	{
 		return manual_mode;
 	}
-	return firmware_mode;
+	return auto_mode;
 }
 
 static void nct6687_update_fans(struct nct6687_data *data)
@@ -1146,7 +1169,7 @@ static ssize_t store_pwm_enable(struct device *dev, struct device_attribute *att
 
 	if (index >= NCT6687_NUM_REG_FAN || kstrtoul(buf, 10, &val))
 		return -EINVAL;
-	if (val != manual_mode && val != firmware_mode)
+	if (val != manual_mode && val != auto_mode && val != NCT6687_LEGACY_AUTO_MODE)
 		return -EINVAL;
 
 	mutex_lock(&data->update_lock);
@@ -1160,12 +1183,21 @@ static ssize_t store_pwm_enable(struct device *dev, struct device_attribute *att
 	{
 		mode = (u8)(mode | bitMask);
 	}
-	else if (val == firmware_mode)
+	else
 	{
+		/* auto_mode or NCT6687_LEGACY_AUTO_MODE — clear the manual-control bit. */
 		mode = (u8)(mode & ~bitMask);
 	}
 
 	nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE(index), mode);
+
+	/*
+	 * Keep the cached pwm_enable consistent with the register we just wrote
+	 * so the immediate read-back returns the value the user just stored,
+	 * not the previous value cached on the last nct6687_update_device tick.
+	 * Legacy value 99 is normalised to the ABI-conforming auto_mode (2).
+	 */
+	data->pwm_enable[index] = (val == manual_mode) ? manual_mode : auto_mode;
 
 	mutex_unlock(&data->update_lock);
 
