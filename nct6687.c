@@ -1568,11 +1568,11 @@ static int nct6687_resume(struct device *dev)
 }
 
 /*
- * Sleep PM ops via the modern dev_pm_ops path. The legacy
- * platform_driver.suspend / .resume hooks were not called by the PM
- * core on any kernel ≥ 5.10 — the only mechanism left is .driver.pm,
- * so wiring up SIMPLE_DEV_PM_OPS is what actually makes suspend/resume
- * happen.
+ * Sleep PM ops registered via .driver.pm. The platform_driver.suspend
+ * / .resume slots are deprecated; .driver.pm is the modern dispatch
+ * path in platform_pm_suspend / platform_pm_resume.
+ * SIMPLE_DEV_PM_OPS also wires freeze/thaw and poweroff/restore, so
+ * hibernate uses the same handlers as S3.
  */
 static SIMPLE_DEV_PM_OPS(nct6687_dev_pm_ops, nct6687_suspend, nct6687_resume);
 
