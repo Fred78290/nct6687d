@@ -518,7 +518,22 @@ static const struct kernel_param_ops nct6687_fan_config_op_ops = {
 	.set = nct6687_fan_config_op_write_handler,
 	.get = nct6687_fan_config_op_read_handler};
 
-module_param_cb(fan_config, &nct6687_fan_config_op_ops, NULL, 0660);
+/*
+ * fan_config is intentionally a boot-time parameter only (perm 0440 —
+ * world-readable, not writable from sysfs). nct6687_fan_config_active
+ * is a globally-shared pointer that sysfs reader paths dereference
+ * lock-free for every fan/pwm access; allowing runtime writes via
+ * `echo msi_alt1 > /sys/module/nct6687/parameters/fan_config` races
+ * those readers and can produce torn pointer reads on 32-bit hosts
+ * and stale register addresses mid-EC-transaction on 64-bit hosts.
+ *
+ * The .set callback is still wired up because the kernel param core
+ * calls it for `insmod nct6687.ko fan_config=msi_alt1` at module load
+ * time, which is the only point at which switching the active config
+ * is safe (before the platform_device is probed and before any reader
+ * exists).
+ */
+module_param_cb(fan_config, &nct6687_fan_config_op_ops, NULL, 0440);
 
 /* ------------------------------------------------------- */
 struct nct6687_data
