@@ -37,6 +37,7 @@
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/version.h>
 
 #define DRVNAME "nct6687"
 
@@ -1409,7 +1410,22 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 	}
 }
 
+/*
+ * platform_driver.remove's signature changed from
+ *   int  (*remove)(struct platform_device *)
+ * to
+ *   void (*remove)(struct platform_device *)
+ * in 6.11 (kernel commit 0edb555a6).
+ *
+ * Conditionally compile the signature so we can drop the
+ * -Wincompatible-pointer-types pragma from around the
+ * platform_driver struct.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 static int nct6687_remove(struct platform_device *pdev)
+#else
+static void nct6687_remove(struct platform_device *pdev)
+#endif
 {
 	struct device *dev = &pdev->dev;
 	struct nct6687_data *data = dev_get_drvdata(dev);
@@ -1424,7 +1440,9 @@ static int nct6687_remove(struct platform_device *pdev)
 
 	mutex_unlock(&data->update_lock);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 	return 0;
+#endif
 }
 
 static int nct6687_probe(struct platform_device *pdev)
@@ -1559,8 +1577,6 @@ static SIMPLE_DEV_PM_OPS(nct6687_dev_pm_ops, nct6687_suspend, nct6687_resume);
 
 #define NCT6687_DEV_PM_OPS (&nct6687_dev_pm_ops)
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 static struct platform_driver nct6687_driver = {
 	.driver = {
 		.name = DRVNAME,
@@ -1569,7 +1585,6 @@ static struct platform_driver nct6687_driver = {
 	.probe = nct6687_probe,
 	.remove = nct6687_remove,
 };
-#pragma GCC diagnostic pop
 
 static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 {
@@ -1795,6 +1810,7 @@ static void __exit sensors_nct6687_exit(void)
 MODULE_AUTHOR("Frederic Boltz <frederic.boltz@gmail.com>");
 MODULE_DESCRIPTION("Driver for NCT6687D");
 MODULE_LICENSE("GPL");
+MODULE_VERSION("1.0.0");
 
 module_init(sensors_nct6687_init);
 module_exit(sensors_nct6687_exit);
