@@ -1590,6 +1590,30 @@ static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
 	default:
 		if (force)
 		{
+			/*
+			 * Only allow force=1 on chips whose ID is plausibly in the
+			 * Nuvoton NCT668x family (upper nibble 0xD). Other vendors'
+			 * SuperIOs — ITE IT87xx at 0x87xx, Fintek F71xxx at 0x07xx,
+			 * even Nuvoton's own NCT677x at 0xc8xx-0xc9xx — use
+			 * completely different register maps. Forcing the NCT6687
+			 * map onto them at minimum produces nonsense readings and
+			 * at worst writes to unknown control bits that can leave
+			 * the EC in a state the BIOS can no longer recover.
+			 *
+			 * If you reach this branch the right move is usually to
+			 * add the chip ID to the explicit switch above, after
+			 * verifying the register map matches; force is meant for
+			 * experimentation with brand-new NCT668x variants, not
+			 * for cross-vendor attachment.
+			 */
+			if ((val & 0xF000) != 0xD000)
+			{
+				pr_warn("force=1 refused: chip ID 0x%04x is outside the Nuvoton NCT668x range (0xD000-0xDFFF); attach the vendor-appropriate driver instead\n",
+					val);
+				goto fail;
+			}
+			pr_warn("force=1: attaching nct6687 to unrecognised chip ID 0x%04x in the NCT668x range — readings may be incorrect, please file a support request with the board's DMI info\n",
+				val);
 			sio_data->kind = nct6687;
 			break;
 		}
