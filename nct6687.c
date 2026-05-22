@@ -1497,9 +1497,9 @@ static int nct6687_probe(struct platform_device *pdev)
 	return PTR_ERR_OR_ZERO(hwmon_dev);
 }
 
-static int nct6687_suspend(struct platform_device *pdev, pm_message_t state)
+static int nct6687_suspend(struct device *dev)
 {
-	struct nct6687_data *data = nct6687_update_device(&pdev->dev);
+	struct nct6687_data *data = nct6687_update_device(dev);
 
 	mutex_lock(&data->update_lock);
 	data->hwm_cfg = nct6687_read(data, NCT6687_HWM_CFG);
@@ -1508,9 +1508,8 @@ static int nct6687_suspend(struct platform_device *pdev, pm_message_t state)
 	return 0;
 }
 
-static int nct6687_resume(struct platform_device *pdev)
+static int nct6687_resume(struct device *dev)
 {
-	struct device *dev = &pdev->dev;
 	struct nct6687_data *data = dev_get_drvdata(dev);
 
 	mutex_lock(&data->update_lock);
@@ -1524,14 +1523,16 @@ static int nct6687_resume(struct platform_device *pdev)
 	return 0;
 }
 
-// static const struct dev_pm_ops nct6687_dev_pm_ops = {
-// 	.suspend = nct6687_suspend,
-// 	.resume = nct6687_resume,
-// 	.freeze = nct6687_suspend,
-// 	.restore = nct6687_resume,
-// };
+/*
+ * Sleep PM ops via the modern dev_pm_ops path. The legacy
+ * platform_driver.suspend / .resume hooks were not called by the PM
+ * core on any kernel ≥ 5.10 — the only mechanism left is .driver.pm,
+ * so wiring up SIMPLE_DEV_PM_OPS is what actually makes suspend/resume
+ * happen.
+ */
+static SIMPLE_DEV_PM_OPS(nct6687_dev_pm_ops, nct6687_suspend, nct6687_resume);
 
-#define NCT6687_DEV_PM_OPS NULL
+#define NCT6687_DEV_PM_OPS (&nct6687_dev_pm_ops)
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
@@ -1542,8 +1543,6 @@ static struct platform_driver nct6687_driver = {
 	},
 	.probe = nct6687_probe,
 	.remove = nct6687_remove,
-	.suspend = nct6687_suspend,
-	.resume = nct6687_resume,
 };
 #pragma GCC diagnostic pop
 
