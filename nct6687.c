@@ -77,21 +77,22 @@ enum kinds
 };
 
 /*
- * pwm*_enable values follow the Linux hwmon ABI
- * (Documentation/hwmon/sysfs-interface):
+ * pwm*_enable values follow the hwmon ABI defined in
+ * Documentation/ABI/testing/sysfs-class-hwmon:
  *
- *   1 - manual fan speed control (write pwm*)
- *   2 - automatic / "thermal cruise" — hand control back to the EC's
- *       firmware fan curve. NCT668x exposes several automatic profiles
- *       internally; this driver does not currently let userspace pick
- *       between them, so 2 simply means "clear the manual-control bit".
+ *   1  - manual fan speed control (write pwm*)
+ *   2+ - automatic fan speed control
  *
- * The driver historically reported 99 for the auto state and rejected
- * any write other than 1 or 99. That deviated from the ABI and made
- * standard userspace (lm-sensors `fancontrol`, ventd, etc.) trip on
- * `-EINVAL` when restoring auto mode on shutdown. Both values are now
- * accepted in store_pwm_enable; show_pwm_enable always returns the
- * ABI-conforming 1 or 2.
+ * NCT668x exposes several automatic profiles internally; this driver
+ * does not currently let userspace pick between them, so 2 simply means
+ * "clear the manual-control bit" and the EC continues running whichever
+ * profile firmware configured.
+ *
+ * The driver previously reported 99 for the auto state and rejected any
+ * write other than 1 or 99. That made standard userspace (lm-sensors
+ * `fancontrol`, ventd, etc.) trip on `-EINVAL` when restoring auto mode
+ * on shutdown. Both values are now accepted in store_pwm_enable;
+ * show_pwm_enable always returns the ABI-conforming 1 or 2.
  */
 enum pwm_enable
 {
