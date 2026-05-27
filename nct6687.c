@@ -430,6 +430,7 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PLUS WIFI (MS-7E56)")}},
 	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PLUS WIFI6E (MS-7E80)")}},
 	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850M GAMING PLUS WIFI6E (MS-7E81)")}},
+	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PRO WIFI6E (MS-7E89)")}},
 	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850-P WIFI (MS-7E56)")}},
 	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850M-A WIFI (MS-7E66)")}},
 	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850M-P WIFI (MS-7E71)")}},
