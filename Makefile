@@ -15,15 +15,15 @@ build: modules
 modules:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) $(LLVM_FLAGS) modules
 install: modules
-	sudo $(MAKE) -C $(KDIR) M=$(CURDIR) $(LLVM_FLAGS) \
+	$(MAKE) -C $(KDIR) M=$(CURDIR) $(LLVM_FLAGS) \
 		INSTALL_MOD_DIR=$(INSTALL_MOD_DIR) modules_install
 	# Remove the legacy module installed by previous releases
-	sudo rm -f -- /lib/modules/$(KVER)/kernel/drivers/hwmon/nct6687.ko*
-	sudo depmod $(KVER)
+	rm -f -- /lib/modules/$(KVER)/kernel/drivers/hwmon/nct6687.ko*
+	depmod $(KVER)
 uninstall:
 	@test -n "$(KVER)" || { echo "Unable to determine kernel release from $(KDIR)" >&2; exit 1; }
-	sudo rm -f -- /lib/modules/$(KVER)/$(INSTALL_MOD_DIR)/nct6687.ko*
-	sudo depmod $(KVER)
+	rm -f -- /lib/modules/$(KVER)/$(INSTALL_MOD_DIR)/nct6687.ko*
+	depmod $(KVER)
 clean:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) $(LLVM_FLAGS) clean
 
