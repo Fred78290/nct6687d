@@ -618,7 +618,7 @@ struct nct6687_data {
 	int sioreg; /* SIO register */
 	enum kinds kind;
 
-	struct device *hwmon_dev;
+	struct device *dev;
 	const struct attribute_group *extra_groups[2];
 
 	struct mutex update_lock;	/* used to protect sensor updates */
@@ -1271,11 +1271,11 @@ static void nct6687_fan_watchdog_work(struct work_struct *work)
 	mutex_unlock(&data->update_lock);
 
 	if (failures)
-		dev_err(data->hwmon_dev,
+		dev_err(data->dev,
 			"fan-control watchdog expired; restored %d channels, failed to restore %d\n",
 			restored, failures);
 	else
-		dev_warn(data->hwmon_dev,
+		dev_warn(data->dev,
 			 "fan-control watchdog expired; restored %d channels\n", restored);
 }
 
@@ -1640,28 +1640,12 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 	}
 }
 
-/*
- * platform_driver.remove's signature changed from
- *   int  (*remove)(struct platform_device *)
- * to
- *   void (*remove)(struct platform_device *)
- * in 6.11 (kernel commit 0edb555a6).
- *
- * Conditionally compile the signature so we can drop the
- * -Wincompatible-pointer-types pragma from around the
- * platform_driver struct.
- */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-static int nct6687_remove(struct platform_device *pdev)
-#else
-static void nct6687_remove(struct platform_device *pdev)
-#endif
+static void nct6687_restore_firmware_state(void *arg)
 {
-	struct device *dev = &pdev->dev;
+	struct device *dev = arg;
 	struct nct6687_data *data = dev_get_drvdata(dev);
 	int i;
 
-	/* devm hwmon attributes remain live until after remove returns. */
 	mutex_lock(&data->fan_watchdog_lock);
 	mutex_lock(&data->update_lock);
 	data->removing = true;
@@ -1678,10 +1662,6 @@ static void nct6687_remove(struct platform_device *pdev)
 	}
 
 	mutex_unlock(&data->update_lock);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-	return 0;
-#endif
 }
 
 static int nct6687_probe(struct platform_device *pdev)
@@ -1692,6 +1672,7 @@ static int nct6687_probe(struct platform_device *pdev)
 	struct device *hwmon_dev;
 	struct resource *res;
 	char build[16];
+	int err;
 
 	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
 	if (!devm_request_region(dev, res->start, IOREGION_LENGTH, DRVNAME))
@@ -1704,6 +1685,7 @@ static int nct6687_probe(struct platform_device *pdev)
 	data->kind = sio_data->kind;
 	data->sioreg = sio_data->sioreg;
 	data->addr = res->start;
+	data->dev = dev;
 
 	// Auto-detect MSI boards requiring alternative fan configuration
 	if (data->kind == nct6687 && dmi_check_system(nct6687_msi_alt_boards)) {
@@ -1737,6 +1719,11 @@ static int nct6687_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&data->fan_watchdog_work, nct6687_fan_watchdog_work);
 	platform_set_drvdata(pdev, data);
 
+	/* Register before hwmon so its sysfs interface is removed first. */
+	err = devm_add_action_or_reset(dev, nct6687_restore_firmware_state, dev);
+	if (err)
+		return err;
+
 	nct6687_init_device(data);
 	nct6687_setup_fans(data);
 	nct6687_setup_pwm(data);
@@ -1755,7 +1742,6 @@ static int nct6687_probe(struct platform_device *pdev)
 		&nct6687_chip_info, data->extra_groups);
 	if (IS_ERR(hwmon_dev))
 		return PTR_ERR(hwmon_dev);
-	data->hwmon_dev = hwmon_dev;
 
 	return 0;
 }
@@ -1828,7 +1814,6 @@ static struct platform_driver nct6687_driver = {
 		.pm = NCT6687_PM_OPS,
 	},
 	.probe = nct6687_probe,
-	.remove = nct6687_remove,
 };
 
 static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
