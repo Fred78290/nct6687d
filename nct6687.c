@@ -443,6 +443,26 @@ enum nct6687_fan_config_type {
 	FAN_CONFIG_MSI_ALT1, // some MSI B850, X870, and Z890 boards
 };
 
+struct nct6687_board_data {
+	unsigned int fan_channels;
+	unsigned int default_fan_mask;
+};
+
+static const struct nct6687_board_data nct6687_msi_alt_default = {
+	.fan_channels = NCT6687_NUM_REG_FAN,
+	.default_fan_mask = NCT6687_FAN_MASK_DEFAULT,
+};
+
+/* MEG Z890 GODLIKE also exposes a verified second pump tachometer. */
+static const struct nct6687_board_data nct6687_msi_alt_dual_pump = {
+	.fan_channels = NCT6687_NUM_REG_FAN_MAX,
+	.default_fan_mask = NCT6687_FAN_MASK_ALL,
+};
+
+#define NCT6687_DMI_BOARD(_name) { \
+	.matches = { DMI_MATCH(DMI_BOARD_NAME, _name) }, \
+}
+
 /*
  * MSI boards that require fan_config=msi_alt1 for proper system fan control
  * These boards use different PWM control registers and require 7-point fan curve writes to adjust system fan speeds
@@ -460,89 +480,92 @@ enum nct6687_fan_config_type {
  */
 static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	// B840 Series
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B840-P WIFI (MS-7E57)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B840M GAMING PLUS WIFI6E (MS-7E77)")}},
+	NCT6687_DMI_BOARD("PRO B840-P WIFI (MS-7E57)"),
+	NCT6687_DMI_BOARD("B840M GAMING PLUS WIFI6E (MS-7E77)"),
 
 	// B850 Series
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PLUS WIFI (MS-7E56)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PLUS WIFI6E (MS-7E80)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850M GAMING PLUS WIFI6E (MS-7E81)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850 GAMING PRO WIFI6E (MS-7E89)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850-P WIFI (MS-7E56)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850M-A WIFI (MS-7E66)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850M-P WIFI (MS-7E71)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG B850M MORTAR WIFI (MS-7E61)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG B850 TOMAHAWK MAX WIFI (MS-7E62)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG B850 EDGE TI WIFI (MS-7E62)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG B850I EDGE TI WIFI (MS-7E79)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "B850MPOWER (MS-7E83)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO B850-S WIFI6E (MS-7E80)")}},
+	NCT6687_DMI_BOARD("B850 GAMING PLUS WIFI (MS-7E56)"),
+	NCT6687_DMI_BOARD("B850 GAMING PLUS WIFI6E (MS-7E80)"),
+	NCT6687_DMI_BOARD("B850M GAMING PLUS WIFI6E (MS-7E81)"),
+	NCT6687_DMI_BOARD("B850 GAMING PRO WIFI6E (MS-7E89)"),
+	NCT6687_DMI_BOARD("PRO B850-P WIFI (MS-7E56)"),
+	NCT6687_DMI_BOARD("PRO B850M-A WIFI (MS-7E66)"),
+	NCT6687_DMI_BOARD("PRO B850M-P WIFI (MS-7E71)"),
+	NCT6687_DMI_BOARD("MAG B850M MORTAR WIFI (MS-7E61)"),
+	NCT6687_DMI_BOARD("MAG B850 TOMAHAWK MAX WIFI (MS-7E62)"),
+	NCT6687_DMI_BOARD("MPG B850 EDGE TI WIFI (MS-7E62)"),
+	NCT6687_DMI_BOARD("MPG B850I EDGE TI WIFI (MS-7E79)"),
+	NCT6687_DMI_BOARD("B850MPOWER (MS-7E83)"),
+	NCT6687_DMI_BOARD("PRO B850-S WIFI6E (MS-7E80)"),
 
 	// B860 Series
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG B860M MORTAR WIFI (MS-7E40)")}},
+	NCT6687_DMI_BOARD("MAG B860M MORTAR WIFI (MS-7E40)"),
 
 	// X870 Series
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "X870 GAMING PLUS WIFI (MS-7E47)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "X870E GAMING PLUS WIFI (MS-7E70)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG X870 TOMAHAWK WIFI (MS-7E51)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO X870-P WIFI (MS-7E47)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO X870E-P WIFI (MS-7E70)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG X870E TOMAHAWK WIFI (MS-7E59)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG X870E TOMAHAWK MAX WIFI PZ (MS-7E84)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG X870E CARBON WIFI (MS-7E49)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG X870E EDGE TI WIFI (MS-7E59)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG X870E GODLIKE (MS-7E48)")}},
+	NCT6687_DMI_BOARD("X870 GAMING PLUS WIFI (MS-7E47)"),
+	NCT6687_DMI_BOARD("X870E GAMING PLUS WIFI (MS-7E70)"),
+	NCT6687_DMI_BOARD("MAG X870 TOMAHAWK WIFI (MS-7E51)"),
+	NCT6687_DMI_BOARD("PRO X870-P WIFI (MS-7E47)"),
+	NCT6687_DMI_BOARD("PRO X870E-P WIFI (MS-7E70)"),
+	NCT6687_DMI_BOARD("MAG X870E TOMAHAWK WIFI (MS-7E59)"),
+	NCT6687_DMI_BOARD("MAG X870E TOMAHAWK MAX WIFI PZ (MS-7E84)"),
+	NCT6687_DMI_BOARD("MPG X870E CARBON WIFI (MS-7E49)"),
+	NCT6687_DMI_BOARD("MPG X870E EDGE TI WIFI (MS-7E59)"),
+	NCT6687_DMI_BOARD("MEG X870E GODLIKE (MS-7E48)"),
 
 	// Z890 Series
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 GODLIKE (MS-7E21)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 ACE (MS-7E22)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG Z890M ACE (MS-7E23)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890 CARBON WIFI (MS-7E17)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890M CARBON WIFI (MS-7E18)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890 EDGE TI WIFI (MS-7E19)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MPG Z890I EDGE TI WIFI (MS-7E33)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "Z890 GAMING PLUS WIFI (MS-7E34)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MAG Z890 TOMAHAWK WIFI (MS-7E32)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-A WIFI (MS-7E32)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-P WIFI (MS-7E34)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-S WIFI (MS-7E54)")}},
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "PRO Z890-S WIFI WHITE (MS-7E54)")}},
-	{}};
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 GODLIKE (MS-7E21)") },
+		.driver_data = (void *)&nct6687_msi_alt_dual_pump,
+	},
+	NCT6687_DMI_BOARD("MEG Z890 ACE (MS-7E22)"),
+	NCT6687_DMI_BOARD("MEG Z890M ACE (MS-7E23)"),
+	NCT6687_DMI_BOARD("MPG Z890 CARBON WIFI (MS-7E17)"),
+	NCT6687_DMI_BOARD("MPG Z890M CARBON WIFI (MS-7E18)"),
+	NCT6687_DMI_BOARD("MPG Z890 EDGE TI WIFI (MS-7E19)"),
+	NCT6687_DMI_BOARD("MPG Z890I EDGE TI WIFI (MS-7E33)"),
+	NCT6687_DMI_BOARD("Z890 GAMING PLUS WIFI (MS-7E34)"),
+	NCT6687_DMI_BOARD("MAG Z890 TOMAHAWK WIFI (MS-7E32)"),
+	NCT6687_DMI_BOARD("PRO Z890-A WIFI (MS-7E32)"),
+	NCT6687_DMI_BOARD("PRO Z890-P WIFI (MS-7E34)"),
+	NCT6687_DMI_BOARD("PRO Z890-S WIFI (MS-7E54)"),
+	NCT6687_DMI_BOARD("PRO Z890-S WIFI WHITE (MS-7E54)"),
+	{},
+};
+
+static const struct nct6687_board_data *nct6687_board;
 
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
 static const struct nct6687_fan_config *nct6687_fan_config_active =
 	nct6687_fan_config_default;
 
-/*
- * Number of fan (tachometer) channels exposed by the active mapping.
- * PWM/control arrays always stay at NCT6687_NUM_REG_FAN; only mappings that
- * declare extra tachometer-only channels raise this.
- */
-/*
- * Boards with a second pump header whose tachometer is readable at 0x144
- * in the msi_alt1 mapping. Verified per board - do not add entries without
- * confirming the reading against the BIOS hardware monitor.
- */
-static const struct dmi_system_id nct6687_dual_pump_boards[] = {
-	{.matches = {DMI_MATCH(DMI_BOARD_NAME, "MEG Z890 GODLIKE (MS-7E21)")}},
-	{}
-};
+static const struct nct6687_board_data *nct6687_match_board(void)
+{
+	const struct dmi_system_id *match;
+
+	match = dmi_first_match(nct6687_msi_alt_boards);
+	if (!match)
+		return NULL;
+
+	return match->driver_data ?: &nct6687_msi_alt_default;
+}
 
 static int nct6687_msi_alt_channels(void)
 {
-	if (!dmi_check_system(nct6687_dual_pump_boards))
+	const struct nct6687_board_data *board = nct6687_board;
+
+	if (!board)
+		board = nct6687_match_board();
+	if (!board)
 		return NCT6687_NUM_REG_FAN;
 
-	/*
-	 * An explicitly provided mask is always respected; only the default
-	 * gains the extra tachometer bit.
-	 */
 	if (fan_mask == NCT6687_FAN_MASK_UNSET)
-		fan_mask = NCT6687_FAN_MASK_DEFAULT | BIT(NCT6687_NUM_REG_FAN);
+		fan_mask = board->default_fan_mask;
 
-	return ARRAY_SIZE(nct6687_fan_config_msi_alt);
+	return board->fan_channels;
 }
 
+/* PWM/control arrays remain fixed; board data may add tachometer channels. */
 static int nct6687_fan_channels = NCT6687_NUM_REG_FAN;
 
 static int nct6687_fan_config_op_write_handler(const char *val, const struct kernel_param *kp)
@@ -618,7 +641,7 @@ struct nct6687_data {
 	int sioreg; /* SIO register */
 	enum kinds kind;
 
-	struct device *hwmon_dev;
+	struct device *dev;
 	const struct attribute_group *extra_groups[2];
 
 	struct mutex update_lock;	/* used to protect sensor updates */
@@ -1271,11 +1294,11 @@ static void nct6687_fan_watchdog_work(struct work_struct *work)
 	mutex_unlock(&data->update_lock);
 
 	if (failures)
-		dev_err(data->hwmon_dev,
+		dev_err(data->dev,
 			"fan-control watchdog expired; restored %d channels, failed to restore %d\n",
 			restored, failures);
 	else
-		dev_warn(data->hwmon_dev,
+		dev_warn(data->dev,
 			 "fan-control watchdog expired; restored %d channels\n", restored);
 }
 
@@ -1640,28 +1663,12 @@ static void nct6687_setup_pwm(struct nct6687_data *data)
 	}
 }
 
-/*
- * platform_driver.remove's signature changed from
- *   int  (*remove)(struct platform_device *)
- * to
- *   void (*remove)(struct platform_device *)
- * in 6.11 (kernel commit 0edb555a6).
- *
- * Conditionally compile the signature so we can drop the
- * -Wincompatible-pointer-types pragma from around the
- * platform_driver struct.
- */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-static int nct6687_remove(struct platform_device *pdev)
-#else
-static void nct6687_remove(struct platform_device *pdev)
-#endif
+static void nct6687_restore_firmware_state(void *arg)
 {
-	struct device *dev = &pdev->dev;
+	struct device *dev = arg;
 	struct nct6687_data *data = dev_get_drvdata(dev);
 	int i;
 
-	/* devm hwmon attributes remain live until after remove returns. */
 	mutex_lock(&data->fan_watchdog_lock);
 	mutex_lock(&data->update_lock);
 	data->removing = true;
@@ -1678,10 +1685,6 @@ static void nct6687_remove(struct platform_device *pdev)
 	}
 
 	mutex_unlock(&data->update_lock);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-	return 0;
-#endif
 }
 
 static int nct6687_probe(struct platform_device *pdev)
@@ -1692,6 +1695,7 @@ static int nct6687_probe(struct platform_device *pdev)
 	struct device *hwmon_dev;
 	struct resource *res;
 	char build[16];
+	int err;
 
 	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
 	if (!devm_request_region(dev, res->start, IOREGION_LENGTH, DRVNAME))
@@ -1704,12 +1708,9 @@ static int nct6687_probe(struct platform_device *pdev)
 	data->kind = sio_data->kind;
 	data->sioreg = sio_data->sioreg;
 	data->addr = res->start;
+	data->dev = dev;
 
-	// Auto-detect MSI boards requiring alternative fan configuration
-	if (data->kind == nct6687 && dmi_check_system(nct6687_msi_alt_boards)) {
-		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
-		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
-		nct6687_fan_channels = nct6687_msi_alt_channels();
+	if (data->kind == nct6687 && nct6687_board) {
 		dev_info(dev, "Detected MSI board; using alternative fan configuration (msi_alt1)\n");
 		dev_info(dev, "MSI fan brute force mode: %s\n",
 				 msi_fan_brute_force ? "enabled" : "disabled");
@@ -1737,6 +1738,11 @@ static int nct6687_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&data->fan_watchdog_work, nct6687_fan_watchdog_work);
 	platform_set_drvdata(pdev, data);
 
+	/* Register before hwmon so its sysfs interface is removed first. */
+	err = devm_add_action_or_reset(dev, nct6687_restore_firmware_state, dev);
+	if (err)
+		return err;
+
 	nct6687_init_device(data);
 	nct6687_setup_fans(data);
 	nct6687_setup_pwm(data);
@@ -1755,7 +1761,6 @@ static int nct6687_probe(struct platform_device *pdev)
 		&nct6687_chip_info, data->extra_groups);
 	if (IS_ERR(hwmon_dev))
 		return PTR_ERR(hwmon_dev);
-	data->hwmon_dev = hwmon_dev;
 
 	return 0;
 }
@@ -1828,7 +1833,6 @@ static struct platform_driver nct6687_driver = {
 		.pm = NCT6687_PM_OPS,
 	},
 	.probe = nct6687_probe,
-	.remove = nct6687_remove,
 };
 
 static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
@@ -1958,14 +1962,12 @@ static int __init sensors_nct6687_init(void)
 		temp_mask &= NCT6687_TEMP_MASK_ALL;
 	}
 
-	/* Auto-detect MSI boards that require msi_alt1 configuration */
-	if (nct6687_fan_config_type == FAN_CONFIG_DEFAULT) {
-		if (dmi_check_system(nct6687_msi_alt_boards)) {
-			pr_info("Detected MSI board requiring msi_alt1 fan configuration\n");
-			nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
-			nct6687_fan_config_active = nct6687_fan_config_msi_alt;
-			nct6687_fan_channels = nct6687_msi_alt_channels();
-		}
+	nct6687_board = nct6687_match_board();
+	if (nct6687_fan_config_type == FAN_CONFIG_DEFAULT && nct6687_board) {
+		pr_info("Detected MSI board requiring msi_alt1 fan configuration\n");
+		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
+		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
+		nct6687_fan_channels = nct6687_msi_alt_channels();
 	}
 
 	/*

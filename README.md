@@ -62,13 +62,13 @@ The implementation is minimalist and was done by reverse coding of Windows 10 so
 ```shell
 ~$ git clone (this-repo)
 ~$ cd nct6687d
-~$ make install
+~$ sudo make install
 ```
 
 To remove a manual installation:
 
 ```shell
-~$ make uninstall
+~$ sudo make uninstall
 ```
 <br>
 
