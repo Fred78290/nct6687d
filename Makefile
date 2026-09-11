@@ -29,6 +29,7 @@ clean:
 
 akmod/build:
 	sudo dnf install -y akmods buildsys-build-rpmfusion
+	rm -rf $(CURDIR)/.tmp/rpmbuild
 	mkdir -p $(CURDIR)/.tmp/nct6687d-1.0.${commitcount}/nct6687d
 	cp LICENSE Kbuild Makefile nct6687.c $(CURDIR)/.tmp/nct6687d-1.0.${commitcount}/nct6687d
 	cd .tmp && tar -czvf nct6687d-1.0.${commitcount}.tar.gz nct6687d-1.0.${commitcount} && cd -
