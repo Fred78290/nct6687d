@@ -294,94 +294,46 @@ struct voltage_reg {
 	const char *label;
 };
 
-static const struct voltage_reg nct6687_voltage_definition[] = {
-	// +12V
-	{
-		.reg = 0,
-		.multiplier = 12,
-		.label = "+12V",
-	},
-	// + 5V
-	{
-		.reg = 1,
-		.multiplier = 5,
-		.label = "+5V",
-	},
-	// +3.3V
-	{
-		.reg = 11,
-		.multiplier = 1,
-		.label = "+3.3V",
-	},
-	// CPU SOC
-	{
-		.reg = 2,
-		.multiplier = 1,
-		.label = "CPU Soc",
-	},
-	// CPU Vcore
-	{
-		.reg = 4,
-		.multiplier = 1,
-		.label = "CPU Vcore",
-	},
-	// CPU 1P8
-	{
-		.reg = 9,
-		.multiplier = 1,
-		.label = "CPU 1P8",
-	},
-	// CPU VDDP
-	{
-		.reg = 10,
-		.multiplier = 1,
-		.label = "CPU VDDP",
-	},
-	// DRAM
-	{
-		.reg = 3,
-		.multiplier = 2,
-		.label = "DRAM",
-	},
-	// Chipset
-	{
-		.reg = 5,
-		.multiplier = 1,
-		.label = "Chipset",
-	},
-
-	// CPU SA
-	{
-		.reg = 6,
-		.multiplier = 1,
-		.label = "CPU SA",
-	},
-	// Voltage #2
-	{
-		.reg = 7,
-		.multiplier = 1,
-		.label = "Voltage #2",
-	},
-	// AVCC3
-	{
-		.reg = 8,
-		.multiplier = 1,
-		.label = "AVCC3",
-	},
-	// AVSB
-	{
-		.reg = 12,
-		.multiplier = 1,
-		.label = "AVSB",
-	},
-	// VBAT
-	{
-		.reg = 13,
-		.multiplier = 1,
-		.label = "VBat",
-	},
-
+struct voltage_reg_override {
+	unsigned int channel;
+	u16 reg;
+	u16 multiplier;
+	const char *label;
 };
+
+/* Default voltage register definitions for NCT6687D */
+static const struct voltage_reg nct6687_voltage_definition[] = {
+	[0] = { .reg = 0, .multiplier = 12, .label = "+12V" },
+	[1] = { .reg = 1, .multiplier = 5, .label = "+5V" },
+	[2] = { .reg = 11, .multiplier = 1, .label = "+3.3V" },
+	[3] = { .reg = 2, .multiplier = 1, .label = "CPU Soc" },
+	[4] = { .reg = 4, .multiplier = 1, .label = "CPU Vcore" },
+	[5] = { .reg = 9, .multiplier = 1, .label = "CPU 1P8" },
+	[6] = { .reg = 10, .multiplier = 1, .label = "CPU VDDP" },
+	[7] = { .reg = 3, .multiplier = 2, .label = "DRAM" },
+	[8] = { .reg = 5, .multiplier = 1, .label = "Chipset" },
+	[9] = { .reg = 6, .multiplier = 1, .label = "CPU SA" },
+	[10] = { .reg = 7, .multiplier = 1, .label = "Voltage #2" },
+	[11] = { .reg = 8, .multiplier = 1, .label = "AVCC3" },
+	[12] = { .reg = 12, .multiplier = 1, .label = "AVSB" },
+	[13] = { .reg = 13, .multiplier = 1, .label = "VBat" },
+};
+
+/* MSI Z890 MS-7E32 voltage mapping adapted from LibreHardwareMonitor. */
+static const struct voltage_reg_override nct6687_voltage_ms7e32_overrides[] = {
+	{ .channel = 2, .reg = 8, .multiplier = 1, .label = "+3.3V" },
+	{ .channel = 3, .reg = 2, .multiplier = 1, .label = "CPU Vcore" },
+	{ .channel = 4, .reg = 3, .multiplier = 1, .label = "VIN5" },
+	{ .channel = 5, .reg = 4, .multiplier = 2, .label = "VDIMM" },
+	{ .channel = 6, .reg = 5, .multiplier = 1, .label = "Chipset" },
+	{ .channel = 8, .reg = 7, .multiplier = 1, .label = "VIN7" },
+	{ .channel = 9, .reg = 13, .multiplier = 1, .label = "VTT" },
+	{ .channel = 10, .reg = 15, .multiplier = 1, .label = "+1.8V" },
+	{ .channel = 11, .reg = 11, .multiplier = 1, .label = "+3V Standby" },
+	{ .channel = 13, .reg = 14, .multiplier = 1, .label = "CMOS Battery" },
+};
+
+static struct voltage_reg nct6687_voltage_config_active[NCT6687_NUM_REG_VOLTAGE];
 
 static const char *const nct6687_manual_voltage_labels[] = {
 	"in0", "in1", "in2", "in3", "in4", "in5", "in6",
@@ -446,6 +398,9 @@ enum nct6687_fan_config_type {
 struct nct6687_board_data {
 	unsigned int fan_channels;
 	unsigned int default_fan_mask;
+	unsigned int hidden_voltage_mask;
+	const struct voltage_reg_override *voltage_overrides;
+	unsigned int voltage_override_count;
 };
 
 static const struct nct6687_board_data nct6687_msi_alt_default = {
@@ -457,6 +412,14 @@ static const struct nct6687_board_data nct6687_msi_alt_default = {
 static const struct nct6687_board_data nct6687_msi_alt_dual_pump = {
 	.fan_channels = NCT6687_NUM_REG_FAN_MAX,
 	.default_fan_mask = NCT6687_FAN_MASK_ALL,
+};
+
+static const struct nct6687_board_data nct6687_ms7e32 = {
+	.fan_channels = NCT6687_NUM_REG_FAN,
+	.default_fan_mask = NCT6687_FAN_MASK_DEFAULT,
+	.hidden_voltage_mask = BIT(7),
+	.voltage_overrides = nct6687_voltage_ms7e32_overrides,
+	.voltage_override_count = ARRAY_SIZE(nct6687_voltage_ms7e32_overrides),
 };
 
 #define NCT6687_DMI_BOARD(_name) { \
@@ -525,7 +488,10 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	NCT6687_DMI_BOARD("MPG Z890 EDGE TI WIFI (MS-7E19)"),
 	NCT6687_DMI_BOARD("MPG Z890I EDGE TI WIFI (MS-7E33)"),
 	NCT6687_DMI_BOARD("Z890 GAMING PLUS WIFI (MS-7E34)"),
-	NCT6687_DMI_BOARD("MAG Z890 TOMAHAWK WIFI (MS-7E32)"),
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "MAG Z890 TOMAHAWK WIFI (MS-7E32)") },
+		.driver_data = (void *)&nct6687_ms7e32,
+	},
 	NCT6687_DMI_BOARD("PRO Z890-A WIFI (MS-7E32)"),
 	NCT6687_DMI_BOARD("PRO Z890-P WIFI (MS-7E34)"),
 	NCT6687_DMI_BOARD("PRO Z890-S WIFI (MS-7E54)"),
@@ -548,6 +514,31 @@ static const struct nct6687_board_data *nct6687_match_board(void)
 		return NULL;
 
 	return match->driver_data ?: &nct6687_msi_alt_default;
+}
+
+static void nct6687_select_voltage_config(void)
+{
+	const struct nct6687_board_data *board = nct6687_board;
+	unsigned int i;
+
+	for (i = 0; i < NCT6687_NUM_REG_VOLTAGE; i++)
+		nct6687_voltage_config_active[i] = nct6687_voltage_definition[i];
+
+	if (!board || !board->voltage_overrides)
+		return;
+
+	for (i = 0; i < board->voltage_override_count; i++) {
+		const struct voltage_reg_override *override =
+			&board->voltage_overrides[i];
+
+		if (WARN_ON(override->channel >= NCT6687_NUM_REG_VOLTAGE))
+			continue;
+
+		nct6687_voltage_config_active[override->channel].reg = override->reg;
+		nct6687_voltage_config_active[override->channel].multiplier =
+			override->multiplier;
+		nct6687_voltage_config_active[override->channel].label = override->label;
+	}
 }
 
 static int nct6687_msi_alt_channels(void)
@@ -695,7 +686,7 @@ static bool nct6687_restore_fan_control(struct nct6687_data *data, int index);
 static const char *nct6687_voltage_label(int index)
 {
 	return manual ? nct6687_manual_voltage_labels[index] :
-		nct6687_voltage_definition[index].label;
+		nct6687_voltage_config_active[index].label;
 }
 
 static u16 nct6687_read(struct nct6687_data *data, u16 address)
@@ -846,7 +837,7 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 
 	/* Measured voltages and limits */
 	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++) {
-		s16 reg = manual ? index : nct6687_voltage_definition[index].reg;
+		s16 reg = manual ? index : nct6687_voltage_config_active[index].reg;
 		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
@@ -855,7 +846,8 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 		 * ~49140 mV, which overflows s16. Use s32 to keep rail values
 		 * correct under worst-case inputs.
 		 */
-		s32 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
+		s32 voltage = manual ? value :
+			value * nct6687_voltage_config_active[index].multiplier;
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = min(voltage, data->voltage[1][index]);
@@ -863,7 +855,7 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 
 		pr_debug("%s[%d], %s, reg=%d, addr=0x%04x, value=%d, voltage=%d\n",
 			 __func__, index, nct6687_voltage_label(index), reg,
-			 NCT6687_REG_VOLTAGE(index), value, voltage);
+			 NCT6687_REG_VOLTAGE(reg), value, voltage);
 	}
 
 	pr_debug("nct6687_update_voltage\n");
@@ -1368,6 +1360,9 @@ static umode_t nct6687_is_visible(const void *drvdata,
 {
 	switch (type) {
 	case hwmon_in:
+		if (!manual && nct6687_board &&
+		    (nct6687_board->hidden_voltage_mask & BIT(channel)))
+			return 0;
 		return 0444;
 	case hwmon_fan:
 		if (channel >= nct6687_fan_channels || !NCT6687_FAN_ENABLED(channel))
@@ -1456,7 +1451,7 @@ static int nct6687_read_string(struct device *dev, enum hwmon_sensor_types type,
 		if (attr != hwmon_in_label)
 			return -EOPNOTSUPP;
 		*str = manual ? nct6687_manual_voltage_labels[channel] :
-			nct6687_voltage_definition[channel].label;
+			nct6687_voltage_config_active[channel].label;
 		return 0;
 	case hwmon_fan:
 		if (attr != hwmon_fan_label)
@@ -1605,11 +1600,12 @@ static void nct6687_setup_voltages(struct nct6687_data *data)
 
 	/* Measured voltages and limits */
 	for (index = 0; index < NCT6687_NUM_REG_VOLTAGE; index++) {
-		s16 reg = manual ? index : nct6687_voltage_definition[index].reg;
+		s16 reg = manual ? index : nct6687_voltage_config_active[index].reg;
 		s16 high = nct6687_read(data, NCT6687_REG_VOLTAGE(reg)) * 16;
 		s16 low = ((u16)nct6687_read(data, NCT6687_REG_VOLTAGE(reg) + 1)) >> 4;
 		s16 value = low + high;
-		s32 voltage = manual ? value : value * nct6687_voltage_definition[index].multiplier;
+		s32 voltage = manual ? value :
+			value * nct6687_voltage_config_active[index].multiplier;
 
 		data->voltage[0][index] = voltage;
 		data->voltage[1][index] = voltage;
@@ -1617,7 +1613,7 @@ static void nct6687_setup_voltages(struct nct6687_data *data)
 
 		pr_debug("%s[%d], %s, addr=0x%04x, value=%d, voltage=%d\n",
 			 __func__, index, nct6687_voltage_label(index),
-			 NCT6687_REG_VOLTAGE(index), value, voltage);
+			 NCT6687_REG_VOLTAGE(reg), value, voltage);
 	}
 }
 
@@ -1963,6 +1959,8 @@ static int __init sensors_nct6687_init(void)
 	}
 
 	nct6687_board = nct6687_match_board();
+	nct6687_select_voltage_config();
+
 	if (nct6687_fan_config_type == FAN_CONFIG_DEFAULT && nct6687_board) {
 		pr_info("Detected MSI board requiring msi_alt1 fan configuration\n");
 		nct6687_fan_config_type = FAN_CONFIG_MSI_ALT1;
