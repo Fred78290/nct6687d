@@ -333,6 +333,20 @@ static const struct voltage_reg_override nct6687_voltage_ms7e32_overrides[] = {
 	{ .channel = 13, .reg = 14, .multiplier = 1, .label = "CMOS Battery" },
 };
 
+/* MSI MAG B850 TOMAHAWK MAX WIFI (MS-7E62) voltage mapping. */
+static const struct voltage_reg_override nct6687_voltage_b850_tomahawk_max_overrides[] = {
+	{ .channel = 2, .reg = 8, .multiplier = 1, .label = "+3.3V" },
+	{ .channel = 5, .reg = 9, .multiplier = 1, .label = "+3V Standby" },
+	{ .channel = 6, .reg = 10, .multiplier = 1, .label = "AVSB" },
+	{ .channel = 7, .reg = 3, .multiplier = 2, .label = "CPU VDDIO" },
+	{ .channel = 8, .reg = 5, .multiplier = 1, .label = "VIN5" },
+	{ .channel = 9, .reg = 6, .multiplier = 1, .label = "VIN6" },
+	{ .channel = 10, .reg = 7, .multiplier = 1, .label = "VIN7" },
+	{ .channel = 11, .reg = 13, .multiplier = 1, .label = "VTT" },
+	{ .channel = 12, .reg = 15, .multiplier = 1, .label = "VREF" },
+	{ .channel = 13, .reg = 14, .multiplier = 1, .label = "VBAT" },
+};
+
 static struct voltage_reg nct6687_voltage_config_active[NCT6687_NUM_REG_VOLTAGE];
 
 static const char *const nct6687_manual_voltage_labels[] = {
@@ -422,6 +436,13 @@ static const struct nct6687_board_data nct6687_ms7e32 = {
 	.voltage_override_count = ARRAY_SIZE(nct6687_voltage_ms7e32_overrides),
 };
 
+static const struct nct6687_board_data nct6687_b850_tomahawk_max = {
+	.fan_channels = NCT6687_NUM_REG_FAN,
+	.default_fan_mask = NCT6687_FAN_MASK_DEFAULT,
+	.voltage_overrides = nct6687_voltage_b850_tomahawk_max_overrides,
+	.voltage_override_count = ARRAY_SIZE(nct6687_voltage_b850_tomahawk_max_overrides),
+};
+
 #define NCT6687_DMI_BOARD(_name) { \
 	.matches = { DMI_MATCH(DMI_BOARD_NAME, _name) }, \
 }
@@ -455,7 +476,10 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	NCT6687_DMI_BOARD("PRO B850M-A WIFI (MS-7E66)"),
 	NCT6687_DMI_BOARD("PRO B850M-P WIFI (MS-7E71)"),
 	NCT6687_DMI_BOARD("MAG B850M MORTAR WIFI (MS-7E61)"),
-	NCT6687_DMI_BOARD("MAG B850 TOMAHAWK MAX WIFI (MS-7E62)"),
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "MAG B850 TOMAHAWK MAX WIFI (MS-7E62)") },
+		.driver_data = (void *)&nct6687_b850_tomahawk_max,
+	},
 	NCT6687_DMI_BOARD("MPG B850 EDGE TI WIFI (MS-7E62)"),
 	NCT6687_DMI_BOARD("MPG B850I EDGE TI WIFI (MS-7E79)"),
 	NCT6687_DMI_BOARD("B850MPOWER (MS-7E83)"),
