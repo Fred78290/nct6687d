@@ -725,8 +725,11 @@ struct nct6687_data {
 	bool _restoreDefaultFanControlRequired[NCT6687_NUM_REG_FAN];
 	/*
 	 * Emulated manual-control state for curve-driven ASRock channels.  The
-	 * EC stays in automatic mode there (see nct6687_asrock_force_ec_auto),
-	 * so the manual/auto distinction has no hardware bit to read back.
+	 * driver keeps the EC in automatic mode there (see
+	 * nct6687_asrock_force_ec_auto), so this flag is what distinguishes a
+	 * flattened curve from the firmware curve.  A manual-control bit that is
+	 * nevertheless set (left behind by firmware or a previous driver
+	 * instance) is reported as manual too and cleared by writing auto mode.
 	 */
 	bool asrock_manual[NCT6687_NUM_REG_FAN];
 	/*
@@ -945,10 +948,16 @@ static enum pwm_enable nct6687_get_pwm_enable(struct nct6687_data *data, int ind
 {
 	u16 bit_mask = BIT(index);
 
-	if (nct6687_uses_asrock_curve())
-		return data->asrock_manual[index] ? manual_mode : auto_mode;
-
+	/*
+	 * A set manual-control bit means the EC is not following its curve on
+	 * any board.  Curve-driven ASRock channels normally keep the bit clear
+	 * and emulate manual control in software, so either state is manual
+	 * there.
+	 */
 	if (nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE(index)) & bit_mask)
+		return manual_mode;
+
+	if (nct6687_uses_asrock_curve() && data->asrock_manual[index])
 		return manual_mode;
 
 	return auto_mode;
@@ -1157,6 +1166,28 @@ static bool nct6687_asrock_apply_flat_curve(struct nct6687_data *data, int index
 	return success;
 }
 
+/*
+ * Return a curve-driven ASRock channel to EC automatic mode.  Skips the
+ * configuration handshake when the manual-control bit is already clear.
+ */
+static bool nct6687_asrock_set_ec_auto(struct nct6687_data *data, int index)
+{
+	bool success;
+
+	if (!(nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE(index)) & BIT(index)))
+		return true;
+
+	if (!start_fan_cfg_update(data, index))
+		return false;
+
+	success = nct6687_asrock_force_ec_auto(data, index);
+
+	if (!finish_fan_cfg_update(data, index))
+		success = false;
+
+	return success;
+}
+
 static int nct6687_write_pwm(struct device *dev, int index, long val)
 {
 	struct nct6687_data *data = dev_get_drvdata(dev);
@@ -1273,6 +1304,17 @@ static int nct6687_write_pwm_enable(struct device *dev, int index, long val)
 			u8 duty = nct6687_read(data, NCT6687_REG_PWM(index));
 
 			if (!nct6687_asrock_apply_flat_curve(data, index, duty)) {
+				mutex_unlock(&data->update_lock);
+				return -EIO;
+			}
+		} else {
+			/*
+			 * auto_mode or NCT6687_LEGACY_AUTO_MODE: a stale EC
+			 * manual-control bit pins the fan to the inert 0xA28+
+			 * duty, so clear and verify it (inside a configuration
+			 * phase, see nct6687_asrock_force_ec_auto).
+			 */
+			if (!nct6687_asrock_set_ec_auto(data, index)) {
 				mutex_unlock(&data->update_lock);
 				return -EIO;
 			}
