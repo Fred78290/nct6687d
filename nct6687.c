@@ -668,15 +668,14 @@ struct nct6687_data {
 	 * Voltage values in mV (hwmon ABI). s32 rather than s16 because a
 	 * 12-bit raw reading multiplied by the +12V definition's multiplier
 	 * of 12 peaks around 49140 mV — past the 32767 ceiling of s16.
-	 * Index 0 = current, 1 = running min, 2 = running max.
 	 */
-	s32 voltage[3][NCT6687_NUM_REG_VOLTAGE];
+	s32 voltage[NCT6687_NUM_REG_VOLTAGE];
 
 	/* Temperature values */
-	s32 temperature[3][NCT6687_NUM_REG_TEMP]; // 0 = current 1 = min 2 = max
+	s32 temperature[NCT6687_NUM_REG_TEMP];
 
 	/* Fan attribute values */
-	u16 rpm[3][NCT6687_NUM_REG_FAN_MAX]; // 0 = current 1 = min 2 = max
+	u16 rpm[NCT6687_NUM_REG_FAN_MAX];
 	u8 _initialFanControlMode[NCT6687_NUM_REG_FAN];
 	u8 _initialFanPwmCommand[NCT6687_NUM_REG_FAN];
 	u8 _initialFanCurve[NCT6687_NUM_REG_FAN][NCT6687_FAN_CURVE_POINTS];
@@ -845,9 +844,7 @@ static void nct6687_update_temperatures(struct nct6687_data *data)
 		half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
 		temperature = (value * 1000) + (500 * half);
 
-		data->temperature[0][i] = temperature;
-		data->temperature[1][i] = min(temperature, data->temperature[1][i]);
-		data->temperature[2][i] = max(temperature, data->temperature[2][i]);
+		data->temperature[i] = temperature;
 
 		pr_debug("%s[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n",
 			 __func__, i, NCT6687_REG_TEMP(i), value, half,
@@ -873,9 +870,7 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 		s32 voltage = manual ? value :
 			value * nct6687_voltage_config_active[index].multiplier;
 
-		data->voltage[0][index] = voltage;
-		data->voltage[1][index] = min(voltage, data->voltage[1][index]);
-		data->voltage[2][index] = max(voltage, data->voltage[2][index]);
+		data->voltage[index] = voltage;
 
 		pr_debug("%s[%d], %s, reg=%d, addr=0x%04x, value=%d, voltage=%d\n",
 			 __func__, index, nct6687_voltage_label(index), reg,
@@ -908,12 +903,9 @@ static void nct6687_update_fans(struct nct6687_data *data)
 
 		rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
-		data->rpm[0][i] = rpm;
-		data->rpm[1][i] = min(rpm, data->rpm[1][i]);
-		data->rpm[2][i] = max(rpm, data->rpm[2][i]);
+		data->rpm[i] = rpm;
 
-		pr_debug("%s[%d], rpm=%d min=%d, max=%d", __func__, i, rpm,
-			 data->rpm[1][i], data->rpm[2][i]);
+		pr_debug("%s[%d], rpm=%d", __func__, i, rpm);
 	}
 
 	for (i = 0; i < NCT6687_NUM_REG_PWM; i++) {
@@ -1412,13 +1404,7 @@ static int nct6687_read_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_in:
 		switch (attr) {
 		case hwmon_in_input:
-			*val = data->voltage[0][channel];
-			return 0;
-		case hwmon_in_min:
-			*val = data->voltage[1][channel];
-			return 0;
-		case hwmon_in_max:
-			*val = data->voltage[2][channel];
+			*val = data->voltage[channel];
 			return 0;
 		default:
 			return -EOPNOTSUPP;
@@ -1426,13 +1412,7 @@ static int nct6687_read_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_fan:
 		switch (attr) {
 		case hwmon_fan_input:
-			*val = data->rpm[0][channel];
-			return 0;
-		case hwmon_fan_min:
-			*val = data->rpm[1][channel];
-			return 0;
-		case hwmon_fan_max:
-			*val = data->rpm[2][channel];
+			*val = data->rpm[channel];
 			return 0;
 		default:
 			return -EOPNOTSUPP;
@@ -1440,13 +1420,7 @@ static int nct6687_read_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_temp:
 		switch (attr) {
 		case hwmon_temp_input:
-			*val = data->temperature[0][channel];
-			return 0;
-		case hwmon_temp_min:
-			*val = data->temperature[1][channel];
-			return 0;
-		case hwmon_temp_max:
-			*val = data->temperature[2][channel];
+			*val = data->temperature[channel];
 			return 0;
 		default:
 			return -EOPNOTSUPP;
@@ -1508,9 +1482,9 @@ static int nct6687_write_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	}
 }
 
-#define NCT6687_IN_CONFIG (HWMON_I_INPUT | HWMON_I_MIN | HWMON_I_MAX | HWMON_I_LABEL)
-#define NCT6687_FAN_CONFIG (HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_MAX | HWMON_F_LABEL)
-#define NCT6687_TEMP_CONFIG (HWMON_T_INPUT | HWMON_T_MIN | HWMON_T_MAX | HWMON_T_LABEL)
+#define NCT6687_IN_CONFIG (HWMON_I_INPUT | HWMON_I_LABEL)
+#define NCT6687_FAN_CONFIG (HWMON_F_INPUT | HWMON_F_LABEL)
+#define NCT6687_TEMP_CONFIG (HWMON_T_INPUT | HWMON_T_LABEL)
 #define NCT6687_PWM_CONFIG (HWMON_PWM_INPUT | HWMON_PWM_ENABLE)
 
 static const struct hwmon_channel_info *nct6687_info[] = {
@@ -1588,9 +1562,7 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 
 		rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
-		data->rpm[0][i] = rpm;
-		data->rpm[1][i] = rpm;
-		data->rpm[2][i] = rpm;
+		data->rpm[i] = rpm;
 	}
 
 	for (i = 0; i < NCT6687_NUM_REG_FAN; i++) {
@@ -1605,9 +1577,7 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 		bit_mask = BIT(i);
 		rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
-		data->rpm[0][i] = rpm;
-		data->rpm[1][i] = rpm;
-		data->rpm[2][i] = rpm;
+		data->rpm[i] = rpm;
 		data->_initialFanControlMode[i] = (u8)(reg & bit_mask);
 		data->_restoreDefaultFanControlRequired[i] = false;
 
@@ -1631,9 +1601,7 @@ static void nct6687_setup_voltages(struct nct6687_data *data)
 		s32 voltage = manual ? value :
 			value * nct6687_voltage_config_active[index].multiplier;
 
-		data->voltage[0][index] = voltage;
-		data->voltage[1][index] = voltage;
-		data->voltage[2][index] = voltage;
+		data->voltage[index] = voltage;
 
 		pr_debug("%s[%d], %s, addr=0x%04x, value=%d, voltage=%d\n",
 			 __func__, index, nct6687_voltage_label(index),
@@ -1657,9 +1625,7 @@ static void nct6687_setup_temperatures(struct nct6687_data *data)
 		half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
 		temperature = (value * 1000) + (500 * half);
 
-		data->temperature[0][i] = temperature;
-		data->temperature[1][i] = temperature;
-		data->temperature[2][i] = temperature;
+		data->temperature[i] = temperature;
 
 		pr_debug("%s[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n",
 			 __func__, i, NCT6687_REG_TEMP(i), value, half,
