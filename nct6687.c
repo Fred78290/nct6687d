@@ -841,7 +841,7 @@ static void nct6687_update_temperatures(struct nct6687_data *data)
 		if (!NCT6687_TEMP_ENABLED(i))
 			continue;
 
-		value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
+		value = (s8)nct6687_read(data, NCT6687_REG_TEMP(i));
 		half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
 		temperature = (value * 1000) + (500 * half);
 
@@ -1653,7 +1653,7 @@ static void nct6687_setup_temperatures(struct nct6687_data *data)
 		if (!NCT6687_TEMP_ENABLED(i))
 			continue;
 
-		value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
+		value = (s8)nct6687_read(data, NCT6687_REG_TEMP(i));
 		half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
 		temperature = (value * 1000) + (500 * half);
 
