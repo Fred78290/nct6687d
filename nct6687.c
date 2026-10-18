@@ -660,7 +660,6 @@ struct nct6687_data {
 	const struct attribute_group *extra_groups[2];
 
 	struct mutex update_lock;	/* used to protect sensor updates */
-	struct mutex EC_io_lock;	/* used to protect EC io */
 	bool valid;					/* true if following fields are valid */
 	unsigned long last_updated; /* In jiffies */
 
@@ -718,11 +717,11 @@ static u16 nct6687_read(struct nct6687_data *data, u16 address)
 	u8 page = (u8)(address >> 8);
 	u8 index = (u8)(address & 0xFF);
 	int res;
-	mutex_lock(&data->EC_io_lock);
+
 	outb_p(EC_SPACE_PAGE_SELECT, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(page, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(index, data->addr + EC_SPACE_INDEX_REGISTER_OFFSET);
-	mutex_unlock(&data->EC_io_lock);
+
 	res = inb_p(data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
 
 	return res;
@@ -738,12 +737,10 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	u8 page = (u8)(address >> 8);
 	u8 index = (u8)(address & 0xFF);
 
-	mutex_lock(&data->EC_io_lock);
 	outb_p(EC_SPACE_PAGE_SELECT, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(page, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(index, data->addr + EC_SPACE_INDEX_REGISTER_OFFSET);
 	outb_p(value, data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
-	mutex_unlock(&data->EC_io_lock);
 }
 
 /*
@@ -1743,7 +1740,6 @@ static int nct6687_probe(struct platform_device *pdev)
 		 data->sioreg);
 
 	mutex_init(&data->update_lock);
-	mutex_init(&data->EC_io_lock);
 	mutex_init(&data->fan_watchdog_lock);
 	INIT_DELAYED_WORK(&data->fan_watchdog_work, nct6687_fan_watchdog_work);
 	platform_set_drvdata(pdev, data);
