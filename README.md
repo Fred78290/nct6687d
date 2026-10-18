@@ -383,10 +383,6 @@ echo 1 > pwm6_enable
 - Changing fan speed was tested successfully by users, see in [reported issues](https://github.com/Fred78290/nct6687d/issues).
 
 ## Issues
-### ACPI
-loading nct6687 fails. `journalctl` shows `ACPI: OSL: Resource conflict; ACPI support missing from driver?`:
-* add `acpi_enforce_resources=lax` as a kernel parameter
-
 ### Loading fails during startup
 `dmesg` / `journalctl` shows 
 ```

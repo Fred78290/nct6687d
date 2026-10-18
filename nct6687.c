@@ -191,7 +191,7 @@ static inline void superio_exit(int ioreg)
  * ISA constants
  */
 
-#define IOREGION_OFFSET 0 /* Use EC port 1 */
+#define IOREGION_OFFSET 4 /* Use EC port 1 */
 #define IOREGION_LENGTH 4
 
 /* Common and NCT6687 specific data */
@@ -283,9 +283,9 @@ MODULE_PARM_DESC(temp_mask, "Bitmask of enabled temperature channels, bit 0 = te
 #define NCT6687_REG_CR_BEEP 0xe0
 #define NCT6687_CR_BEEP_MASK (1 << 6)
 
-#define EC_SPACE_PAGE_REGISTER_OFFSET 0x04
-#define EC_SPACE_INDEX_REGISTER_OFFSET 0x05
-#define EC_SPACE_DATA_REGISTER_OFFSET 0x06
+#define EC_SPACE_PAGE_REGISTER_OFFSET 0x00
+#define EC_SPACE_INDEX_REGISTER_OFFSET 0x01
+#define EC_SPACE_DATA_REGISTER_OFFSET 0x02
 #define EC_SPACE_PAGE_SELECT 0xFF
 
 struct voltage_reg {
