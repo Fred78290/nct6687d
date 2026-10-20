@@ -205,12 +205,19 @@ chip "nct6687-*"
   You can use custom labels and ignore inputs without setting this option if
   you can figure out their names (see which `*_label` contains builtin label).
 
-- **fan_config** (`default`, `msi_alt1`) (default: `default`) Changes fan configuration 
+- **fan_config** (`default`, `msi_alt1`, `asrock`) (default: `default`) Changes fan configuration 
   for RPM & PWM registers for motherboards with alternative chip configurations.
   
-  Motherboards which need this will show CPU/Pump RPMs but no data on System fans.
+  Motherboards which need `msi_alt1` will show CPU/Pump RPMs but no data on System fans.
 
   `msi_alt1` is automatically enabled for supported MSI motherboards. Manual configuration is only needed for unsupported boards.
+
+  `asrock` selects the curve-based PWM mapping for ASRock boards whose NCT6686D EC ignores
+  the direct PWM registers (every `pwmN` write fails with `-EIO` otherwise). It is enabled
+  automatically for the supported ASRock boards listed below and can be forced with
+  `fan_config=asrock` to test other ASRock NCT6686D boards. See
+  [Fan control on ASRock NCT6686D boards](#fan-control-on-asrock-nct6686d-boards) for how
+  manual and automatic control behave with this mapping.
 
 - **msi_fan_brute_force** (bool) (default: false) **[BETA]**
   For MSI motherboards with `msi_alt1` configuration: When enabled, writes PWM values to all 7 fan 
@@ -303,6 +310,14 @@ chip "nct6687-*"
   | PRO Z890-S WIFI | MS-7E54 |
 </details>
 
+<details>
+  <summary>Supported ASRock boards for ("asrock")</summary>
+
+  | Board | DMI vendor / board name |
+  | --- | ---: |
+  | B850I Lightning WiFi | ASRock / B850I Lightning WiFi |
+</details>
+
 ## CONFIGURATION VIA SYSFS
 
 In order to be able to use this interface you need to know the path as which
@@ -377,6 +392,28 @@ echo 2 > pwm6_enable
 echo 1 > pwm6_enable
 ```
 
+### Fan control on ASRock NCT6686D boards
+
+With `fan_config=asrock` (auto-detected on the supported ASRock boards) the EC does not act
+on the direct PWM registers at all. It evaluates a 7-point fan curve per channel, and only
+while the channel is in the EC's own automatic mode, so the driver controls the fan by
+rewriting that curve and keeps the EC in automatic mode internally:
+
+ * **Manual** (`echo 1 > pwmN_enable`, or any write to `pwmN`): the driver saves the
+   firmware curve, then flattens all 7 points to a single duty. `pwmN_enable=1` on its own
+   holds the duty the EC is currently driving; a write to `pwmN` sets that duty. The fan now
+   ignores temperature, and `pwmN_enable` reads `1`.
+ * **Automatic** (`echo 2 > pwmN_enable`): the saved firmware curve is written back and the
+   EC's manual-control bit is cleared if it was set.
+ * **Unload**: every channel still under manual control gets its firmware curve and
+   manual-control bit restored to what they were when the driver first took control of it.
+
+If `pwmN_enable` already reads `1` right after loading the module, the EC's manual-control
+bit was left set (by firmware or a previous driver instance). In that state the EC ignores
+the curve and pins the fan at roughly 50%; `echo 2 > pwmN_enable` clears the bit and returns
+the fan to the firmware curve. Do this before writing `pwmN`, otherwise unloading the module
+puts the stale bit back.
+
 ## VERIFIED
 **1. Fan speed control**
 
@@ -439,3 +476,21 @@ If you have a non-MSI motherboard with this issue, try using module parameter `f
 > dmesg line above will reveal a stale forced setting at a glance.
 >
 > Reference: issue #167 (MSI MPG B650 CARBON WIFI, MS-7D74).
+
+### Fan control fails on ASRock boards
+On ASRock boards with the NCT6686D EC, RPM readings work but every write to `pwmN` fails
+with `-EIO` and `dmesg` shows:
+```
+nct6687: The device rejected new configuration as invalid
+```
+
+The `asrock` fan configuration fixes this and is detected automatically on the supported
+ASRock boards. Verify it in `dmesg` after loading the module:
+```
+nct6687: Detected ASRock board requiring curve-based fan control
+nct6687 nct6687.2592: active fan config=asrock, SYS_FAN reg_rpm=0x0144/0x0146/0x0148
+```
+
+On an ASRock NCT6686D board that is not listed, try `options nct6687 fan_config=asrock` in
+`/etc/modprobe.d/` and report the result, including the DMI board name from
+`cat /sys/class/dmi/id/board_name`, so the board can be added to the list.
