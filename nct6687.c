@@ -191,7 +191,7 @@ static inline void superio_exit(int ioreg)
  * ISA constants
  */
 
-#define IOREGION_OFFSET 0 /* Use EC port 1 */
+#define IOREGION_OFFSET 4 /* Use EC port 1 */
 #define IOREGION_LENGTH 4
 
 /* Common and NCT6687 specific data */
@@ -283,9 +283,9 @@ MODULE_PARM_DESC(temp_mask, "Bitmask of enabled temperature channels, bit 0 = te
 #define NCT6687_REG_CR_BEEP 0xe0
 #define NCT6687_CR_BEEP_MASK (1 << 6)
 
-#define EC_SPACE_PAGE_REGISTER_OFFSET 0x04
-#define EC_SPACE_INDEX_REGISTER_OFFSET 0x05
-#define EC_SPACE_DATA_REGISTER_OFFSET 0x06
+#define EC_SPACE_PAGE_REGISTER_OFFSET 0x00
+#define EC_SPACE_INDEX_REGISTER_OFFSET 0x01
+#define EC_SPACE_DATA_REGISTER_OFFSET 0x02
 #define EC_SPACE_PAGE_SELECT 0xFF
 
 struct voltage_reg {
@@ -331,6 +331,20 @@ static const struct voltage_reg_override nct6687_voltage_ms7e32_overrides[] = {
 	{ .channel = 10, .reg = 15, .multiplier = 1, .label = "+1.8V" },
 	{ .channel = 11, .reg = 11, .multiplier = 1, .label = "+3V Standby" },
 	{ .channel = 13, .reg = 14, .multiplier = 1, .label = "CMOS Battery" },
+};
+
+/* MSI MAG B850 TOMAHAWK MAX WIFI (MS-7E62) voltage mapping. */
+static const struct voltage_reg_override nct6687_voltage_b850_tomahawk_max_overrides[] = {
+	{ .channel = 2, .reg = 8, .multiplier = 1, .label = "+3.3V" },
+	{ .channel = 5, .reg = 9, .multiplier = 1, .label = "+3V Standby" },
+	{ .channel = 6, .reg = 10, .multiplier = 1, .label = "AVSB" },
+	{ .channel = 7, .reg = 3, .multiplier = 2, .label = "CPU VDDIO" },
+	{ .channel = 8, .reg = 5, .multiplier = 1, .label = "VIN5" },
+	{ .channel = 9, .reg = 6, .multiplier = 1, .label = "VIN6" },
+	{ .channel = 10, .reg = 7, .multiplier = 1, .label = "VIN7" },
+	{ .channel = 11, .reg = 13, .multiplier = 1, .label = "VTT" },
+	{ .channel = 12, .reg = 15, .multiplier = 1, .label = "VREF" },
+	{ .channel = 13, .reg = 14, .multiplier = 1, .label = "VBAT" },
 };
 
 static struct voltage_reg nct6687_voltage_config_active[NCT6687_NUM_REG_VOLTAGE];
@@ -423,6 +437,13 @@ static const struct nct6687_board_data nct6687_ms7e32 = {
 	.voltage_override_count = ARRAY_SIZE(nct6687_voltage_ms7e32_overrides),
 };
 
+static const struct nct6687_board_data nct6687_b850_tomahawk_max = {
+	.fan_channels = NCT6687_NUM_REG_FAN,
+	.default_fan_mask = NCT6687_FAN_MASK_DEFAULT,
+	.voltage_overrides = nct6687_voltage_b850_tomahawk_max_overrides,
+	.voltage_override_count = ARRAY_SIZE(nct6687_voltage_b850_tomahawk_max_overrides),
+};
+
 #define NCT6687_DMI_BOARD(_name) { \
 	.matches = { DMI_MATCH(DMI_BOARD_NAME, _name) }, \
 }
@@ -456,7 +477,10 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	NCT6687_DMI_BOARD("PRO B850M-A WIFI (MS-7E66)"),
 	NCT6687_DMI_BOARD("PRO B850M-P WIFI (MS-7E71)"),
 	NCT6687_DMI_BOARD("MAG B850M MORTAR WIFI (MS-7E61)"),
-	NCT6687_DMI_BOARD("MAG B850 TOMAHAWK MAX WIFI (MS-7E62)"),
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "MAG B850 TOMAHAWK MAX WIFI (MS-7E62)") },
+		.driver_data = (void *)&nct6687_b850_tomahawk_max,
+	},
 	NCT6687_DMI_BOARD("MPG B850 EDGE TI WIFI (MS-7E62)"),
 	NCT6687_DMI_BOARD("MPG B850I EDGE TI WIFI (MS-7E79)"),
 	NCT6687_DMI_BOARD("B850MPOWER (MS-7E83)"),
@@ -702,7 +726,6 @@ struct nct6687_data {
 	const struct attribute_group *extra_groups[2];
 
 	struct mutex update_lock;	/* used to protect sensor updates */
-	struct mutex EC_io_lock;	/* used to protect EC io */
 	bool valid;					/* true if following fields are valid */
 	unsigned long last_updated; /* In jiffies */
 
@@ -710,15 +733,14 @@ struct nct6687_data {
 	 * Voltage values in mV (hwmon ABI). s32 rather than s16 because a
 	 * 12-bit raw reading multiplied by the +12V definition's multiplier
 	 * of 12 peaks around 49140 mV — past the 32767 ceiling of s16.
-	 * Index 0 = current, 1 = running min, 2 = running max.
 	 */
-	s32 voltage[3][NCT6687_NUM_REG_VOLTAGE];
+	s32 voltage[NCT6687_NUM_REG_VOLTAGE];
 
 	/* Temperature values */
-	s32 temperature[3][NCT6687_NUM_REG_TEMP]; // 0 = current 1 = min 2 = max
+	s32 temperature[NCT6687_NUM_REG_TEMP];
 
 	/* Fan attribute values */
-	u16 rpm[3][NCT6687_NUM_REG_FAN_MAX]; // 0 = current 1 = min 2 = max
+	u16 rpm[NCT6687_NUM_REG_FAN_MAX];
 	u8 _initialFanControlMode[NCT6687_NUM_REG_FAN];
 	u8 _initialFanPwmCommand[NCT6687_NUM_REG_FAN];
 	u8 _initialFanCurve[NCT6687_NUM_REG_FAN][NCT6687_FAN_CURVE_POINTS];
@@ -770,21 +792,11 @@ static u16 nct6687_read(struct nct6687_data *data, u16 address)
 	u8 index = (u8)(address & 0xFF);
 	int res;
 
-	/*
-	 * EC access is a page-select + index-set + data-read sequence on a
-	 * shared 4-byte I/O window. The data read MUST be inside the lock
-	 * with the matching page/index writes — otherwise a concurrent
-	 * nct6687_read() or nct6687_write() from another thread can
-	 * reprogram page/index between our writes and our inb_p, and we
-	 * return data for the wrong register. nct6687_write() already
-	 * holds the lock across its data write; do the same here.
-	 */
-	mutex_lock(&data->EC_io_lock);
 	outb_p(EC_SPACE_PAGE_SELECT, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(page, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(index, data->addr + EC_SPACE_INDEX_REGISTER_OFFSET);
+
 	res = inb_p(data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
-	mutex_unlock(&data->EC_io_lock);
 
 	return res;
 }
@@ -799,12 +811,10 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	u8 page = (u8)(address >> 8);
 	u8 index = (u8)(address & 0xFF);
 
-	mutex_lock(&data->EC_io_lock);
 	outb_p(EC_SPACE_PAGE_SELECT, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(page, data->addr + EC_SPACE_PAGE_REGISTER_OFFSET);
 	outb_p(index, data->addr + EC_SPACE_INDEX_REGISTER_OFFSET);
 	outb_p(value, data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
-	mutex_unlock(&data->EC_io_lock);
 }
 
 /*
@@ -900,13 +910,11 @@ static void nct6687_update_temperatures(struct nct6687_data *data)
 		if (!NCT6687_TEMP_ENABLED(i))
 			continue;
 
-		value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
+		value = (s8)nct6687_read(data, NCT6687_REG_TEMP(i));
 		half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
 		temperature = (value * 1000) + (500 * half);
 
-		data->temperature[0][i] = temperature;
-		data->temperature[1][i] = min(temperature, data->temperature[1][i]);
-		data->temperature[2][i] = max(temperature, data->temperature[2][i]);
+		data->temperature[i] = temperature;
 
 		pr_debug("%s[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n",
 			 __func__, i, NCT6687_REG_TEMP(i), value, half,
@@ -932,9 +940,7 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 		s32 voltage = manual ? value :
 			value * nct6687_voltage_config_active[index].multiplier;
 
-		data->voltage[0][index] = voltage;
-		data->voltage[1][index] = min(voltage, data->voltage[1][index]);
-		data->voltage[2][index] = max(voltage, data->voltage[2][index]);
+		data->voltage[index] = voltage;
 
 		pr_debug("%s[%d], %s, reg=%d, addr=0x%04x, value=%d, voltage=%d\n",
 			 __func__, index, nct6687_voltage_label(index), reg,
@@ -976,12 +982,9 @@ static void nct6687_update_fans(struct nct6687_data *data)
 
 		rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
-		data->rpm[0][i] = rpm;
-		data->rpm[1][i] = min(rpm, data->rpm[1][i]);
-		data->rpm[2][i] = max(rpm, data->rpm[2][i]);
+		data->rpm[i] = rpm;
 
-		pr_debug("%s[%d], rpm=%d min=%d, max=%d", __func__, i, rpm,
-			 data->rpm[1][i], data->rpm[2][i]);
+		pr_debug("%s[%d], rpm=%d", __func__, i, rpm);
 	}
 
 	for (i = 0; i < NCT6687_NUM_REG_PWM; i++) {
@@ -1602,13 +1605,7 @@ static int nct6687_read_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_in:
 		switch (attr) {
 		case hwmon_in_input:
-			*val = data->voltage[0][channel];
-			return 0;
-		case hwmon_in_min:
-			*val = data->voltage[1][channel];
-			return 0;
-		case hwmon_in_max:
-			*val = data->voltage[2][channel];
+			*val = data->voltage[channel];
 			return 0;
 		default:
 			return -EOPNOTSUPP;
@@ -1616,13 +1613,7 @@ static int nct6687_read_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_fan:
 		switch (attr) {
 		case hwmon_fan_input:
-			*val = data->rpm[0][channel];
-			return 0;
-		case hwmon_fan_min:
-			*val = data->rpm[1][channel];
-			return 0;
-		case hwmon_fan_max:
-			*val = data->rpm[2][channel];
+			*val = data->rpm[channel];
 			return 0;
 		default:
 			return -EOPNOTSUPP;
@@ -1630,13 +1621,7 @@ static int nct6687_read_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_temp:
 		switch (attr) {
 		case hwmon_temp_input:
-			*val = data->temperature[0][channel];
-			return 0;
-		case hwmon_temp_min:
-			*val = data->temperature[1][channel];
-			return 0;
-		case hwmon_temp_max:
-			*val = data->temperature[2][channel];
+			*val = data->temperature[channel];
 			return 0;
 		default:
 			return -EOPNOTSUPP;
@@ -1698,9 +1683,9 @@ static int nct6687_write_hwmon(struct device *dev, enum hwmon_sensor_types type,
 	}
 }
 
-#define NCT6687_IN_CONFIG (HWMON_I_INPUT | HWMON_I_MIN | HWMON_I_MAX | HWMON_I_LABEL)
-#define NCT6687_FAN_CONFIG (HWMON_F_INPUT | HWMON_F_MIN | HWMON_F_MAX | HWMON_F_LABEL)
-#define NCT6687_TEMP_CONFIG (HWMON_T_INPUT | HWMON_T_MIN | HWMON_T_MAX | HWMON_T_LABEL)
+#define NCT6687_IN_CONFIG (HWMON_I_INPUT | HWMON_I_LABEL)
+#define NCT6687_FAN_CONFIG (HWMON_F_INPUT | HWMON_F_LABEL)
+#define NCT6687_TEMP_CONFIG (HWMON_T_INPUT | HWMON_T_LABEL)
 #define NCT6687_PWM_CONFIG (HWMON_PWM_INPUT | HWMON_PWM_ENABLE)
 
 static const struct hwmon_channel_info *nct6687_info[] = {
@@ -1778,9 +1763,7 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 
 		rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
-		data->rpm[0][i] = rpm;
-		data->rpm[1][i] = rpm;
-		data->rpm[2][i] = rpm;
+		data->rpm[i] = rpm;
 	}
 
 	for (i = 0; i < NCT6687_NUM_REG_FAN; i++) {
@@ -1795,9 +1778,7 @@ static void nct6687_setup_fans(struct nct6687_data *data)
 		bit_mask = BIT(i);
 		rpm = nct6687_read16(data, NCT6687_REG_FAN_RPM(i));
 
-		data->rpm[0][i] = rpm;
-		data->rpm[1][i] = rpm;
-		data->rpm[2][i] = rpm;
+		data->rpm[i] = rpm;
 		data->_initialFanControlMode[i] = (u8)(reg & bit_mask);
 		data->_restoreDefaultFanControlRequired[i] = false;
 
@@ -1821,9 +1802,7 @@ static void nct6687_setup_voltages(struct nct6687_data *data)
 		s32 voltage = manual ? value :
 			value * nct6687_voltage_config_active[index].multiplier;
 
-		data->voltage[0][index] = voltage;
-		data->voltage[1][index] = voltage;
-		data->voltage[2][index] = voltage;
+		data->voltage[index] = voltage;
 
 		pr_debug("%s[%d], %s, addr=0x%04x, value=%d, voltage=%d\n",
 			 __func__, index, nct6687_voltage_label(index),
@@ -1843,13 +1822,11 @@ static void nct6687_setup_temperatures(struct nct6687_data *data)
 		if (!NCT6687_TEMP_ENABLED(i))
 			continue;
 
-		value = (char)nct6687_read(data, NCT6687_REG_TEMP(i));
+		value = (s8)nct6687_read(data, NCT6687_REG_TEMP(i));
 		half = (nct6687_read(data, NCT6687_REG_TEMP(i) + 1) >> 7) & 0x1;
 		temperature = (value * 1000) + (500 * half);
 
-		data->temperature[0][i] = temperature;
-		data->temperature[1][i] = temperature;
-		data->temperature[2][i] = temperature;
+		data->temperature[i] = temperature;
 
 		pr_debug("%s[%d]], addr=%04X, value=%d, half=%d, temperature=%d\n",
 			 __func__, i, NCT6687_REG_TEMP(i), value, half,
@@ -1944,7 +1921,6 @@ static int nct6687_probe(struct platform_device *pdev)
 		 data->sioreg);
 
 	mutex_init(&data->update_lock);
-	mutex_init(&data->EC_io_lock);
 	mutex_init(&data->fan_watchdog_lock);
 	INIT_DELAYED_WORK(&data->fan_watchdog_work, nct6687_fan_watchdog_work);
 	platform_set_drvdata(pdev, data);
