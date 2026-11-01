@@ -483,7 +483,10 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 	NCT6687_DMI_BOARD("MPG B850 EDGE TI WIFI (MS-7E62)"),
 	NCT6687_DMI_BOARD("MPG B850I EDGE TI WIFI (MS-7E79)"),
 	NCT6687_DMI_BOARD("B850MPOWER (MS-7E83)"),
-	NCT6687_DMI_BOARD("PRO B850-S WIFI6E (MS-7E80)"),
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "PRO B850-S WIFI6E (MS-7E80)") },
+		.driver_data = (void *)&nct6687_b850_tomahawk_max,
+	},
 
 	// B860 Series
 	NCT6687_DMI_BOARD("MAG B860M MORTAR WIFI (MS-7E40)"),
