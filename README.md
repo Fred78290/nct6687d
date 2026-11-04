@@ -391,6 +391,23 @@ systemd-modules-load[339]: Failed to insert module 'nct6687': No such device
 ```
 * add `softdep nct6687 pre: i2c_i801` to e.g. `/etc/modprobe.d/sensors.conf`.
 
+### Conflict with the in-kernel `nct6683` driver
+The in-kernel `nct6683` driver also binds to the NCT6687 and registers it as `nct6687`, so it is easily mistaken for this driver. Only one of them can be loaded. `sensors-detect` may add `nct6683` to `HWMON_MODULES` (e.g. in `/etc/conf.d/lm_sensors`), which loads it at boot.
+
+To switch to this driver without rebooting:
+```sh
+~$ lsmod | grep nct66                # check which driver is loaded
+~$ sudo rmmod nct6683
+~$ sudo modprobe nct6687             # or: sudo insmod ./nct6687.ko
+```
+Restart any fan control software afterwards, as the hwmon device is re-created.
+
+To make this permanent, blacklist `nct6683` and remove it from `HWMON_MODULES`:
+```sh
+~$ echo "blacklist nct6683" | sudo tee /etc/modprobe.d/nct6683_blacklist.conf
+```
+A blacklist only stops automatic loading; an explicit `modprobe nct6683` (as done for `HWMON_MODULES`) still loads it. Use `install nct6683 /bin/false` instead of `blacklist nct6683` to block that too.
+
 ### Loading `msi_fan_brute_force` parameter fails
 - Symptom: No RPM value is displayed for some fans in the sensor data; or the following behavior is observed: the fan stops at 60%
 - Solution steps:
