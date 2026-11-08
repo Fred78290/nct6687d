@@ -373,6 +373,12 @@ Before its first change to a channel, the driver saves the channel's PWM target 
 
 `fan_control_watchdog` (in the hwmon device folder) holds a manual-control lease. Writing a timeout from 1 to 300 seconds arms or refreshes it. If the lease expires, every channel changed since its last automatic-mode request is restored to its saved state; a channel that fails to restore is retried every second, and the file keeps reading the timeout until every channel is back. Writing `0` disarms the watchdog. A controlling daemon should refresh the lease independently of PWM value changes and disarm it only after returning all channels to automatic control. The lease is paused while the system is suspended and resumes with its remaining time after the device is active again.
 
+### EC page dump (debugfs)
+
+`/sys/kernel/debug/nct6687.<address>/ec_pages` (root only) prints EC pages 0x01-0x0E, one line of 16 bytes per row, for example `0a00: 00 00 00 00 00 00 00 00 40 40 00 40 00 00 00 00`.
+It only reads, and it reads under the same lock as the driver's other EC access, so it never interleaves with a fan configuration change.
+Page 0x04 is skipped: it holds the EC's SMBus master, and the board firmware stops POST when that master is left busy.
+
 ## VERIFIED
 **1. Fan speed control**
 
