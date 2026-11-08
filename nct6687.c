@@ -34,6 +34,7 @@
 #include <linux/iopoll.h>
 #include <linux/jiffies.h>
 #include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
 #include <linux/minmax.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -45,6 +46,8 @@
 
 #define DRVNAME "nct6687"
 
+#define NCT6687_FAN_CURVE_POINTS 7 /* points in each fan curve */
+#define NCT6687_FAN_CURVE_POINT_SIZE 2 /* bytes per duty point */
 #define NCT6687_FIRST_SYSTEM_FAN_INDEX 2
 #define NCT6687_FAN_WATCHDOG_MAX_SECONDS 300
 
@@ -207,6 +210,8 @@ static inline void superio_exit(int ioreg)
  */
 #define NCT6687_NUM_REG_FAN_MAX 9
 #define NCT6687_NUM_REG_PWM 8
+/* One temperature and one PWM attribute per automatic fan curve point */
+#define NCT6687_NUM_CURVE_ATTRS (NCT6687_NUM_REG_PWM * NCT6687_FAN_CURVE_POINTS * 2)
 
 /*
  * Default mask covers the eight PWM-capable channels. Boards that expose the
@@ -530,6 +535,17 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 
 static const struct nct6687_board_data *nct6687_board;
 
+/*
+ * msi_alt1 boards whose automatic fan curve blocks (nct6687_curve_msi_alt[])
+ * were measured; only these get the pwmN_auto_pointM attributes.
+ */
+static const struct dmi_system_id nct6687_curve_boards[] = {
+	NCT6687_DMI_BOARD("PRO X870E-P WIFI (MS-7E70)"),
+	{},
+};
+
+static bool nct6687_curve_board;
+
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
 static const struct nct6687_fan_config *nct6687_fan_config_active =
 	nct6687_fan_config_default;
@@ -664,6 +680,12 @@ struct nct6687_saved_control {
 	u8 target; /* PWM target */
 };
 
+/* An automatic fan curve: 7 temperature and duty points. */
+struct nct6687_curve {
+	u8 temp[NCT6687_FAN_CURVE_POINTS]; /* degrees C */
+	u8 pwm[NCT6687_FAN_CURVE_POINTS];
+};
+
 struct nct6687_data {
 	int addr; /* IO base of EC space */
 	int sioreg; /* SIO register */
@@ -708,6 +730,19 @@ struct nct6687_data {
 
 	/* Remember extra register values over suspend/resume */
 	u8 hwm_cfg;
+
+	/* Automatic fan curve attributes, created at probe */
+	struct sensor_device_attribute_2 curve_sattrs[NCT6687_NUM_CURVE_ATTRS];
+	struct attribute *curve_attrs[NCT6687_NUM_CURVE_ATTRS + 1];
+	struct attribute_group curve_group;
+	const struct attribute_group *groups[3];
+
+	/*
+	 * Curves written through those attributes, written back on resume
+	 * because the firmware restores its own. Protected by update_lock.
+	 */
+	struct nct6687_curve curves[NCT6687_NUM_REG_PWM];
+	unsigned long curves_written; /* bit N: curves[N] holds a written curve */
 };
 
 struct nct6687_sio_data {
@@ -1272,7 +1307,302 @@ static struct attribute *nct6687_fan_watchdog_attrs[] = {
 	NULL,
 };
 
-ATTRIBUTE_GROUPS(nct6687_fan_watchdog);
+static const struct attribute_group nct6687_fan_watchdog_group = {
+	.attrs = nct6687_fan_watchdog_attrs,
+};
+
+/*
+ * Automatic fan curves (msi_alt1 boards with the NCT6687D-R).
+ *
+ * Each PWM channel's curve is a 24-byte block in EC space:
+ *   bytes 0-6:   7 temperature points, in degrees C
+ *   byte 7:      0
+ *   bytes 8-20:  7 duty points (0-255) at even offsets; the odd bytes are 0
+ *   bytes 21-23: unknown (02 05 05 on MS-7E70), left as read
+ * The block of EC fan channel ch is at 0xB00 + 0x18 * ch. The EC runs the
+ * curve while the channel is not under manual control; a curve written during
+ * manual control takes effect when the channel returns to automatic mode.
+ *
+ * The EC interpolates linearly between the points against the CPU temperature
+ * and ramps the output at about 2 % per second. It takes a new curve only
+ * inside the configuration handshake (start_fan_cfg_update() and
+ * finish_fan_cfg_update()). It rejects a curve whose duty falls as the
+ * temperature rises: NCT6687_REG_FAN_ENGINE_STS then reads 0xF4, with
+ * NCT6687_FAN_CFG_INVALID and NCT6687_FAN_DRIVE_BY_DEFAULT_VAL set, and every
+ * fan runs at a fixed default duty (154 on MS-7E70) until a valid curve is
+ * written. On acceptance the status reads 0x60 or 0x64.
+ *
+ * Measured on an MSI PRO X870E-P WIFI (MS-7E70) on 2026-11-08 by direct EC
+ * access: raising duty point 1 of SYS_FAN1 (0xC70) from 127 to 170 moved only
+ * SYS_FAN1, from 158 to 175, and raising duty point 2 of CPU_FAN (0xB0A) from
+ * 89 to 120 moved only CPU_FAN, from 107 to 132, at a CPU temperature of 49 C.
+ * The block addresses of PUMP and SYS_FAN2-6 follow the 0x18 stride.
+ *
+ * The firmware writes its own curves back on resume from S3, so the driver
+ * writes back the curves set through its attributes (nct6687_restore_curves()).
+ */
+#define NCT6687_CURVE_PWM_OFFSET 8
+/* Above 127 C the byte's signedness is unknown; no firmware curve goes there. */
+#define NCT6687_CURVE_TEMP_MAX 127
+
+/* Curve blocks of the PWM channels in the msi_alt1 mapping, in channel order. */
+static const u16 nct6687_curve_msi_alt[NCT6687_NUM_REG_PWM] = {
+	0xB00, 0xB18, 0xC68, 0xC50, 0xC38, 0xC20, 0xC08, 0xBF0,
+};
+
+/* The channel's curve block, or 0 when it is not known for this board. */
+static u16 nct6687_curve_reg(int index)
+{
+	if (!nct6687_curve_board)
+		return 0;
+
+	return nct6687_curve_msi_alt[index];
+}
+
+static u16 nct6687_curve_temp_reg(int index, int point)
+{
+	return nct6687_curve_reg(index) + point;
+}
+
+static u16 nct6687_curve_pwm_reg(int index, int point)
+{
+	return nct6687_curve_reg(index) + NCT6687_CURVE_PWM_OFFSET +
+	       point * NCT6687_FAN_CURVE_POINT_SIZE;
+}
+
+static void nct6687_read_curve(struct nct6687_data *data, int index, struct nct6687_curve *curve)
+{
+	int i;
+
+	for (i = 0; i < NCT6687_FAN_CURVE_POINTS; i++) {
+		curve->temp[i] = nct6687_read(data, nct6687_curve_temp_reg(index, i));
+		curve->pwm[i] = nct6687_read(data, nct6687_curve_pwm_reg(index, i));
+	}
+}
+
+/* The EC accepts only a curve whose points do not fall. */
+static bool nct6687_curve_valid(const struct nct6687_curve *curve)
+{
+	int i;
+
+	for (i = 1; i < NCT6687_FAN_CURVE_POINTS; i++) {
+		if (curve->temp[i] < curve->temp[i - 1] || curve->pwm[i] < curve->pwm[i - 1])
+			return false;
+	}
+
+	return true;
+}
+
+/* Writes all 14 points in one handshake; true when the EC holds and accepted them. */
+static bool nct6687_write_curve(struct nct6687_data *data, int index,
+				const struct nct6687_curve *curve)
+{
+	struct nct6687_curve written;
+	bool success;
+	int i;
+
+	if (!start_fan_cfg_update(data))
+		return false;
+
+	for (i = 0; i < NCT6687_FAN_CURVE_POINTS; i++) {
+		nct6687_write(data, nct6687_curve_temp_reg(index, i), curve->temp[i]);
+		nct6687_write(data, nct6687_curve_pwm_reg(index, i), curve->pwm[i]);
+	}
+
+	nct6687_read_curve(data, index, &written);
+	success = !memcmp(&written, curve, sizeof(written));
+	if (!success)
+		pr_err("Failed to verify fan %d curve\n", index);
+
+	if (!finish_fan_cfg_update(data))
+		success = false;
+
+	return success;
+}
+
+/*
+ * Writes back the curves written through the attributes, which the firmware
+ * replaces with its own on resume.
+ */
+static void nct6687_restore_curves(struct nct6687_data *data)
+{
+	int index;
+
+	for_each_set_bit(index, &data->curves_written, NCT6687_NUM_REG_PWM) {
+		if (!nct6687_write_curve(data, index, &data->curves[index]))
+			dev_err(data->dev, "Failed to restore fan %d curve\n", index);
+	}
+}
+
+static int nct6687_store_curve_point(struct device *dev, struct device_attribute *attr,
+				     bool is_temp, u8 value)
+{
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+	struct nct6687_data *data = dev_get_drvdata(dev);
+	int index = sattr->nr;
+	int point = sattr->index;
+	struct nct6687_curve old, curve;
+	int err = 0;
+
+	mutex_lock(&data->update_lock);
+
+	if (data->removing) {
+		err = -ENODEV;
+		goto out;
+	}
+
+	nct6687_read_curve(data, index, &old);
+	curve = old;
+	if (is_temp)
+		curve.temp[point] = value;
+	else
+		curve.pwm[point] = value;
+
+	if (!nct6687_curve_valid(&curve)) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	/* An unchanged curve is still remembered, so resume writes it back. */
+	if (memcmp(&curve, &old, sizeof(curve)) &&
+	    !nct6687_write_curve(data, index, &curve)) {
+		dev_err(dev, "fan %d curve not accepted (engine status 0x%02x); restoring the previous curve\n",
+			index, nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS));
+		if (!nct6687_write_curve(data, index, &old))
+			dev_err(dev, "Failed to restore fan %d curve\n", index);
+		err = -EIO;
+		goto out;
+	}
+
+	data->curves[index] = curve;
+	set_bit(index, &data->curves_written);
+
+out:
+	mutex_unlock(&data->update_lock);
+
+	return err;
+}
+
+static ssize_t nct6687_curve_temp_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+	struct nct6687_data *data = dev_get_drvdata(dev);
+	u8 value;
+
+	mutex_lock(&data->update_lock);
+	value = nct6687_read(data, nct6687_curve_temp_reg(sattr->nr, sattr->index));
+	mutex_unlock(&data->update_lock);
+
+	return sysfs_emit(buf, "%d\n", value * 1000);
+}
+
+static ssize_t nct6687_curve_temp_store(struct device *dev, struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	long val;
+	int err;
+
+	err = kstrtol(buf, 10, &val);
+	if (err)
+		return err;
+
+	val = DIV_ROUND_CLOSEST(clamp_val(val, 0, NCT6687_CURVE_TEMP_MAX * 1000), 1000);
+	err = nct6687_store_curve_point(dev, attr, true, val);
+
+	return err ? err : count;
+}
+
+static ssize_t nct6687_curve_pwm_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+	struct nct6687_data *data = dev_get_drvdata(dev);
+	u8 value;
+
+	mutex_lock(&data->update_lock);
+	value = nct6687_read(data, nct6687_curve_pwm_reg(sattr->nr, sattr->index));
+	mutex_unlock(&data->update_lock);
+
+	return sysfs_emit(buf, "%d\n", value);
+}
+
+static ssize_t nct6687_curve_pwm_store(struct device *dev, struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	long val;
+	int err;
+
+	err = kstrtol(buf, 10, &val);
+	if (err)
+		return err;
+
+	if (val < 0 || val > 255)
+		return -EINVAL;
+
+	err = nct6687_store_curve_point(dev, attr, false, val);
+
+	return err ? err : count;
+}
+
+/* Creates curve attribute n: pwmN_auto_pointM_temp or pwmN_auto_pointM_pwm. */
+static int nct6687_add_curve_attr(struct device *dev, struct nct6687_data *data, int n,
+				  int index, int point, bool is_temp)
+{
+	struct sensor_device_attribute_2 *sattr = &data->curve_sattrs[n];
+	const char *name;
+
+	name = devm_kasprintf(dev, GFP_KERNEL, "pwm%d_auto_point%d_%s",
+			      index + 1, point + 1, is_temp ? "temp" : "pwm");
+	if (!name)
+		return -ENOMEM;
+
+	sysfs_attr_init(&sattr->dev_attr.attr);
+	sattr->dev_attr.attr.name = name;
+	sattr->dev_attr.attr.mode = 0644;
+	sattr->dev_attr.show = is_temp ? nct6687_curve_temp_show : nct6687_curve_pwm_show;
+	sattr->dev_attr.store = is_temp ? nct6687_curve_temp_store : nct6687_curve_pwm_store;
+	sattr->nr = index;
+	sattr->index = point;
+	data->curve_attrs[n] = &sattr->dev_attr.attr;
+
+	return 0;
+}
+
+/*
+ * Creates pwmN_auto_pointM_temp and pwmN_auto_pointM_pwm for every enabled
+ * channel with a known curve block, and the attribute groups to register.
+ */
+static int nct6687_init_groups(struct device *dev, struct nct6687_data *data)
+{
+	int groups = 0;
+	int count = 0;
+	int index;
+	int point;
+	int err;
+
+	data->groups[groups++] = &nct6687_fan_watchdog_group;
+
+	for (index = 0; index < NCT6687_NUM_REG_PWM; index++) {
+		if (!nct6687_curve_reg(index) || !NCT6687_FAN_ENABLED(index))
+			continue;
+
+		for (point = 0; point < NCT6687_FAN_CURVE_POINTS; point++) {
+			err = nct6687_add_curve_attr(dev, data, count++, index, point, true);
+			if (err)
+				return err;
+
+			err = nct6687_add_curve_attr(dev, data, count++, index, point, false);
+			if (err)
+				return err;
+		}
+	}
+
+	if (count) {
+		data->curve_group.attrs = data->curve_attrs;
+		data->groups[groups++] = &data->curve_group;
+	}
+
+	return 0;
+}
 
 static umode_t nct6687_is_visible(const void *drvdata,
 				  enum hwmon_sensor_types type, u32 attr, int channel)
@@ -1531,9 +1861,13 @@ static int nct6687_probe(struct platform_device *pdev)
 
 	dev_info(dev, "%s EC firmware version %d.%d build %s\n", nct6687_chip_names[data->kind], nct6687_read(data, NCT6687_REG_VERSION_HI), nct6687_read(data, NCT6687_REG_VERSION_LO), build);
 
+	err = nct6687_init_groups(dev, data);
+	if (err)
+		return err;
+
 	hwmon_dev = devm_hwmon_device_register_with_info(
 		dev, nct6687_device_names[data->kind], data,
-		&nct6687_chip_info, nct6687_fan_watchdog_groups);
+		&nct6687_chip_info, data->groups);
 	if (IS_ERR(hwmon_dev))
 		return PTR_ERR(hwmon_dev);
 
@@ -1565,6 +1899,9 @@ static int nct6687_resume(struct device *dev)
 	mutex_lock(&data->update_lock);
 
 	nct6687_write(data, NCT6687_HWM_CFG, data->hwm_cfg);
+
+	if (!data->removing)
+		nct6687_restore_curves(data);
 
 	/* Force re-reading all values */
 	data->valid = false;
@@ -1746,6 +2083,9 @@ static int __init sensors_nct6687_init(void)
 		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
 		nct6687_fan_channels = nct6687_msi_alt_channels();
 	}
+
+	nct6687_curve_board = nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 &&
+			      dmi_first_match(nct6687_curve_boards);
 
 	/*
 	 * Board is known now: resolve the sentinel for every path that did not

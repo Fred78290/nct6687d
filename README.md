@@ -360,6 +360,41 @@ echo 2 > pwm6_enable
 echo 1 > pwm6_enable
 ```
 
+### `pwm[1-8]_auto_point[1-7]_temp` and `pwm[1-8]_auto_point[1-7]_pwm`
+
+The automatic fan curve the EC runs when `pwm[1-8]_enable` is `2`, as 7 points of the standard hwmon interface (`Documentation/hwmon/sysfs-interface.rst`).
+These files exist only with `fan_config=msi_alt1`, the mapping of the MSI boards with an NCT6687D-R, on boards whose curve registers were measured, and only for the CPU fan, the pump and system fans 1-6.
+The measured boards are:
+
+- MSI PRO X870E-P WIFI (MS-7E70)
+
+To add a board, compare a dump of EC pages `0x0B` and `0x0C` with the curves its BIOS shows, confirm that changing one point moves only the matching fan, then add its `DMI_BOARD_NAME` (`/sys/class/dmi/id/board_name`) to `nct6687_curve_boards`.
+
+- `_temp` is the point's CPU temperature in millidegrees Celsius, stored in whole degrees and clamped to 0-127 °C.
+- `_pwm` is the duty at that point, `0`-`255`.
+
+The EC interpolates linearly between the points against the CPU temperature, and changes the fan's output by about 2 % per second.
+Reads come from the EC.
+A write changes one point and sends the whole curve to the EC in one configuration handshake.
+
+- A curve whose temperatures or duties fall from one point to the next is refused with `EINVAL`, and nothing is written.
+  The EC itself rejects a falling duty curve and then runs every fan at a fixed default duty, so the driver never sends one.
+- If the EC rejects the curve anyway, the write fails with `EIO` and the driver writes the previous curve back.
+- The EC runs the curve only in automatic mode. A curve written while the channel is under manual control (`pwmN_enable` reads `1`) is stored and takes effect when the channel returns to automatic mode.
+
+Because each write is checked on its own, change a curve in an order that keeps it non-decreasing at every step: for example, first raise every point that goes up, from point 7 down to point 1, then lower every point that goes down, from point 1 up to point 7.
+
+A written curve stays in the EC after the module is unloaded: neither unloading nor the fan-control watchdog restores the firmware's curve.
+On resume from suspend, the firmware writes its own curves back, and the driver then writes back every curve set through these files since the module was loaded.
+A write of a value the EC already holds counts, so after each module load, write every point of each curve that should survive suspend.
+Whether the firmware also rewrites the curves on a reboot is not verified; set them again at every boot.
+
+```
+# read the CPU fan curve: 7 temperatures, then 7 duties
+cd /sys/class/hwmon/hwmon5
+cat pwm1_auto_point*_temp pwm1_auto_point*_pwm
+```
+
 ### Fan-control watchdog
 
 Before its first change to a channel, the driver saves the channel's PWM target and control mode. The saved state is restored when userspace writes automatic mode to `pwmN_enable`, when the driver is unloaded, or when the fan-control watchdog expires.
