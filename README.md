@@ -212,18 +212,11 @@ chip "nct6687-*"
 
   `msi_alt1` is automatically enabled for supported MSI motherboards. Manual configuration is only needed for unsupported boards.
 
-- **msi_fan_brute_force** (bool) (default: false) **[BETA]**
-  For MSI motherboards with `msi_alt1` configuration: When enabled, writes PWM values to all 7 fan 
-  curve control points. This may help with fan control on some MSI boards where standard PWM writes 
-  don't take effect immediately. Only affects system fans controlled by the BIOS. Not the CPU fan or pump fan. 
+- **msi_fan_brute_force** (bool) (default: false)
+  No longer used, and ignored. It is kept so that existing `options nct6687 msi_fan_brute_force=1` lines still load.
 
-  Before entering manual control, the driver saves all 7 original curve points. The saved curve is restored like every other saved fan state (see [Fan-control watchdog](#fan-control-watchdog)).
-  
-  This implementation is based on register mappings from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
-  
-  Usage: `modprobe nct6687 msi_fan_brute_force=1`
-
-  Note: This option requires blacklisting the `nct6683` module to prevent it from loading instead of `nct6687`. See the [Issues](#issues) section for detailed instructions.
+  On `msi_alt1` boards, manual control of the system fans now sets each fan's own manual-control bit (EC register `0x80F`) and writes its direct PWM register (`0x260`-`0x265`), instead of flattening the fan's automatic curve.
+  The map comes from the fan tables of MSI BIOS 2A52 for the PRO X870E-P WIFI (MS-7E70); [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) uses the same registers.
 
 - **fan_mask** (uint) (default: all channels, `0xff`)
   Bitmask of the fan/pwm channels to expose. Bit 0 controls `fan1`/`pwm1`, bit 1
@@ -252,7 +245,7 @@ chip "nct6687-*"
   ```
 
 <details>
-  <summary>Supported MSI boards for ("msi_alt1" and "msi_fan_brute_force")</summary>
+  <summary>Supported MSI boards for "msi_alt1"</summary>
 
   | Board | DMI |
   | --- | ---: |
@@ -367,9 +360,44 @@ echo 2 > pwm6_enable
 echo 1 > pwm6_enable
 ```
 
+### `pwm[1-8]_auto_point[1-7]_temp` and `pwm[1-8]_auto_point[1-7]_pwm`
+
+The automatic fan curve the EC runs when `pwm[1-8]_enable` is `2`, as 7 points of the standard hwmon interface (`Documentation/hwmon/sysfs-interface.rst`).
+These files exist only with `fan_config=msi_alt1`, the mapping of the MSI boards with an NCT6687D-R, on boards whose curve registers were measured, and only for the CPU fan, the pump and system fans 1-6.
+The measured boards are:
+
+- MSI PRO X870E-P WIFI (MS-7E70)
+
+To add a board, compare a dump of EC pages `0x0B` and `0x0C` with the curves its BIOS shows, confirm that changing one point moves only the matching fan, then add its `DMI_BOARD_NAME` (`/sys/class/dmi/id/board_name`) to `nct6687_curve_boards`.
+
+- `_temp` is the point's CPU temperature in millidegrees Celsius, stored in whole degrees and clamped to 0-127 °C.
+- `_pwm` is the duty at that point, `0`-`255`.
+
+The EC interpolates linearly between the points against the CPU temperature, and changes the fan's output by about 2 % per second.
+Reads come from the EC.
+A write changes one point and sends the whole curve to the EC in one configuration handshake.
+
+- A curve whose temperatures or duties fall from one point to the next is refused with `EINVAL`, and nothing is written.
+  The EC itself rejects a falling duty curve and then runs every fan at a fixed default duty, so the driver never sends one.
+- If the EC rejects the curve anyway, the write fails with `EIO` and the driver writes the previous curve back.
+- The EC runs the curve only in automatic mode. A curve written while the channel is under manual control (`pwmN_enable` reads `1`) is stored and takes effect when the channel returns to automatic mode.
+
+Because each write is checked on its own, change a curve in an order that keeps it non-decreasing at every step: for example, first raise every point that goes up, from point 7 down to point 1, then lower every point that goes down, from point 1 up to point 7.
+
+A written curve stays in the EC after the module is unloaded: neither unloading nor the fan-control watchdog restores the firmware's curve.
+On resume from suspend, the firmware writes its own curves back, and the driver then writes back every curve set through these files since the module was loaded.
+A write of a value the EC already holds counts, so after each module load, write every point of each curve that should survive suspend.
+Whether the firmware also rewrites the curves on a reboot is not verified; set them again at every boot.
+
+```
+# read the CPU fan curve: 7 temperatures, then 7 duties
+cd /sys/class/hwmon/hwmon5
+cat pwm1_auto_point*_temp pwm1_auto_point*_pwm
+```
+
 ### Fan-control watchdog
 
-Before its first change to a channel, the driver saves the channel's PWM target (all 7 curve points with `msi_fan_brute_force`) and control mode. The saved state is restored when userspace writes automatic mode to `pwmN_enable`, when the driver is unloaded, or when the fan-control watchdog expires.
+Before its first change to a channel, the driver saves the channel's PWM target and control mode. The saved state is restored when userspace writes automatic mode to `pwmN_enable`, when the driver is unloaded, or when the fan-control watchdog expires.
 
 `fan_control_watchdog` (in the hwmon device folder) holds a manual-control lease. Writing a timeout from 1 to 300 seconds arms or refreshes it. If the lease expires, every channel changed since its last automatic-mode request is restored to its saved state; a channel that fails to restore is retried every second, and the file keeps reading the timeout until every channel is back. Writing `0` disarms the watchdog. A controlling daemon should refresh the lease independently of PWM value changes and disarm it only after returning all channels to automatic control. The lease is paused while the system is suspended and resumes with its remaining time after the device is active again.
 
@@ -404,23 +432,19 @@ To make this permanent, blacklist `nct6683` and remove it from `HWMON_MODULES`:
 ```
 A blacklist only stops automatic loading; an explicit `modprobe nct6683` (as done for `HWMON_MODULES`) still loads it. Use `install nct6683 /bin/false` instead of `blacklist nct6683` to block that too.
 
-### Loading `msi_fan_brute_force` parameter fails
+### System fans do not respond on MSI boards
 - Symptom: No RPM value is displayed for some fans in the sensor data; or the following behavior is observed: the fan stops at 60%
 - Solution steps:
   1. Prevent the wrong driver from loading:
      ```sh
      echo "blacklist nct6683" | sudo tee /etc/modprobe.d/nct6683_blacklist.conf
      ```
-  2. Set module option to enable brute-force fan curve writes for MSI boards:
-     ```sh
-     echo "options nct6687 msi_fan_brute_force=1" | sudo tee /etc/modprobe.d/nct6687_msi.conf
-     ```
-  3. Ensure the `nct6687` module is loaded at boot:
+  2. Ensure the `nct6687` module is loaded at boot:
      ```sh
      echo "nct6687" | sudo tee /etc/modules-load.d/nct6687.conf
      ```
-  4. Reboot and verify the module loads correctly.   
-   
+  3. Reboot and verify the module loads correctly.
+
 
 - After installation:
   Check `/etc/conf.d/lm-sensors.conf` (or your distro's equivalent) that `HWMON_MODULES` not includes `nct6683` (e.g., `HWMON_MODULES="coretemp nct6683 ..."`) to ensure the correct driver is loaded at boot.

@@ -34,6 +34,7 @@
 #include <linux/iopoll.h>
 #include <linux/jiffies.h>
 #include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
 #include <linux/minmax.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -45,8 +46,8 @@
 
 #define DRVNAME "nct6687"
 
-#define NCT6687_FAN_CURVE_POINTS 7	   // Number of points in the fan curve registers for each fan.
-#define NCT6687_FAN_CURVE_POINT_SIZE 2 // Each curve point occupies 2 registers
+#define NCT6687_FAN_CURVE_POINTS 7 /* points in each fan curve */
+#define NCT6687_FAN_CURVE_POINT_SIZE 2 /* bytes per duty point */
 #define NCT6687_FIRST_SYSTEM_FAN_INDEX 2
 #define NCT6687_FAN_WATCHDOG_MAX_SECONDS 300
 
@@ -103,7 +104,7 @@ enum pwm_enable {
 
 static bool force;
 static bool manual;
-static bool msi_fan_brute_force; // Force use of alternative fan config for some MSI boards.
+static bool msi_fan_brute_force; // No longer used; kept so existing options still load.
 
 module_param(force, bool, 0);
 MODULE_PARM_DESC(force, "Set to one to enable support for unknown vendors");
@@ -112,7 +113,7 @@ module_param(manual, bool, 0);
 MODULE_PARM_DESC(manual, "Set voltage input and voltage label configured with external sensors file");
 
 module_param(msi_fan_brute_force, bool, 0);
-MODULE_PARM_DESC(msi_fan_brute_force, "Enable brute force fan curve writing (write to all 7 curve points)");
+MODULE_PARM_DESC(msi_fan_brute_force, "Ignored; msi_alt1 system fans use their direct PWM registers");
 
 static const char *const nct6687_device_names[] = {
 	"nct6683",
@@ -209,6 +210,8 @@ static inline void superio_exit(int ioreg)
  */
 #define NCT6687_NUM_REG_FAN_MAX 9
 #define NCT6687_NUM_REG_PWM 8
+/* One temperature and one PWM attribute per automatic fan curve point */
+#define NCT6687_NUM_CURVE_ATTRS (NCT6687_NUM_REG_PWM * NCT6687_FAN_CURVE_POINTS * 2)
 
 /*
  * Default mask covers the eight PWM-capable channels. Boards that expose the
@@ -258,6 +261,8 @@ MODULE_PARM_DESC(temp_mask, "Bitmask of enabled temperature channels, bit 0 = te
 
 /* Shared by all channels: bit N of the mode register puts channel N under manual control. */
 #define NCT6687_REG_FAN_CTRL_MODE 0xA00
+/* Manual-control bits of EC fan channels 8-15; the msi_alt1 system fans are 15 down to 10. */
+#define NCT6687_REG_FAN_CTRL_MODE_HIGH 0x80F
 #define NCT6687_REG_FAN_PWM_COMMAND 0xA01
 #define NCT6687_FAN_CFG_REQ 0x80
 #define NCT6687_FAN_CFG_DONE 0x40
@@ -391,12 +396,12 @@ static const struct nct6687_fan_config nct6687_fan_config_default[] = {
 static const struct nct6687_fan_config nct6687_fan_config_msi_alt[] = {
 	{.reg_rpm = 0x140, .reg_pwm = 0x160, .reg_pwm_write = 0xA28, .label = "CPU Fan"},
 	{.reg_rpm = 0x142, .reg_pwm = 0x161, .reg_pwm_write = 0xA29, .label = "Pump Fan"},
-	{.reg_rpm = 0x15E, .reg_pwm = 0xE05, .reg_pwm_write = 0xC70, .label = "System Fan #1"},
-	{.reg_rpm = 0x15C, .reg_pwm = 0xE04, .reg_pwm_write = 0xC58, .label = "System Fan #2"},
-	{.reg_rpm = 0x15A, .reg_pwm = 0xE03, .reg_pwm_write = 0xC40, .label = "System Fan #3"},
-	{.reg_rpm = 0x158, .reg_pwm = 0xE02, .reg_pwm_write = 0xC28, .label = "System Fan #4"},
-	{.reg_rpm = 0x156, .reg_pwm = 0xE01, .reg_pwm_write = 0xC10, .label = "System Fan #5"},
-	{.reg_rpm = 0x154, .reg_pwm = 0xE00, .reg_pwm_write = 0xBF8, .label = "System Fan #6"},
+	{.reg_rpm = 0x15E, .reg_pwm = 0xE05, .reg_pwm_write = 0x265, .label = "System Fan #1"},
+	{.reg_rpm = 0x15C, .reg_pwm = 0xE04, .reg_pwm_write = 0x264, .label = "System Fan #2"},
+	{.reg_rpm = 0x15A, .reg_pwm = 0xE03, .reg_pwm_write = 0x263, .label = "System Fan #3"},
+	{.reg_rpm = 0x158, .reg_pwm = 0xE02, .reg_pwm_write = 0x262, .label = "System Fan #4"},
+	{.reg_rpm = 0x156, .reg_pwm = 0xE01, .reg_pwm_write = 0x261, .label = "System Fan #5"},
+	{.reg_rpm = 0x154, .reg_pwm = 0xE00, .reg_pwm_write = 0x260, .label = "System Fan #6"},
 	/*
 	 * Tachometer-only channel: second pump header (PUMP_SYS Fan 2 in BIOS).
 	 * 0x144 is unused in this mapping since the system fans moved to
@@ -451,7 +456,7 @@ static const struct nct6687_board_data nct6687_b850_tomahawk_max = {
 
 /*
  * MSI boards that require fan_config=msi_alt1 for proper system fan control
- * These boards use different PWM control registers and require 7-point fan curve writes to adjust system fan speeds
+ * These boards use different RPM, PWM and manual-control registers for their system fans
  *
  * Based on LibreHardwareMonitor NCT6687DR chip detection:
  * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Motherboard/Lpc/LpcIO.cs
@@ -529,6 +534,17 @@ static const struct dmi_system_id nct6687_msi_alt_boards[] = {
 };
 
 static const struct nct6687_board_data *nct6687_board;
+
+/*
+ * msi_alt1 boards whose automatic fan curve blocks (nct6687_curve_msi_alt[])
+ * were measured; only these get the pwmN_auto_pointM attributes.
+ */
+static const struct dmi_system_id nct6687_curve_boards[] = {
+	NCT6687_DMI_BOARD("PRO X870E-P WIFI (MS-7E70)"),
+	{},
+};
+
+static bool nct6687_curve_board;
 
 static int nct6687_fan_config_type = FAN_CONFIG_DEFAULT; // default
 static const struct nct6687_fan_config *nct6687_fan_config_active =
@@ -660,8 +676,14 @@ MODULE_PARM_DESC(fan_config, "Fan register mapping (default or msi_alt1)");
 /* A channel's state from before this driver's first change, restored on release. */
 struct nct6687_saved_control {
 	bool saved; /* the fields below hold the state to restore */
-	bool manual_control; /* the channel's bit in NCT6687_REG_FAN_CTRL_MODE */
-	u8 target[NCT6687_FAN_CURVE_POINTS]; /* PWM target; only target[0] without curve writes */
+	bool manual_control; /* the channel's manual-control bit */
+	u8 target; /* PWM target */
+};
+
+/* An automatic fan curve: 7 temperature and duty points. */
+struct nct6687_curve {
+	u8 temp[NCT6687_FAN_CURVE_POINTS]; /* degrees C */
+	u8 pwm[NCT6687_FAN_CURVE_POINTS];
 };
 
 struct nct6687_data {
@@ -708,6 +730,19 @@ struct nct6687_data {
 
 	/* Remember extra register values over suspend/resume */
 	u8 hwm_cfg;
+
+	/* Automatic fan curve attributes, created at probe */
+	struct sensor_device_attribute_2 curve_sattrs[NCT6687_NUM_CURVE_ATTRS];
+	struct attribute *curve_attrs[NCT6687_NUM_CURVE_ATTRS + 1];
+	struct attribute_group curve_group;
+	const struct attribute_group *groups[3];
+
+	/*
+	 * Curves written through those attributes, written back on resume
+	 * because the firmware restores its own. Protected by update_lock.
+	 */
+	struct nct6687_curve curves[NCT6687_NUM_REG_PWM];
+	unsigned long curves_written; /* bit N: curves[N] holds a written curve */
 };
 
 struct nct6687_sio_data {
@@ -752,73 +787,51 @@ static void nct6687_write(struct nct6687_data *data, u16 address, u16 value)
 	outb_p(value, data->addr + EC_SPACE_DATA_REGISTER_OFFSET);
 }
 
-static bool nct6687_uses_msi_fan_curve(int index)
+/*
+ * In the msi_alt1 mapping, system fan 1-6 (index 2-7) are EC fan channels 15
+ * down to 10. Their manual-control bits are bits 7 down to 2 of
+ * NCT6687_REG_FAN_CTRL_MODE_HIGH, and their PWM targets are 0x265 down to
+ * 0x260 (reg_pwm_write). The CPU and pump fans are channels 0 and 1, with their
+ * bits in NCT6687_REG_FAN_CTRL_MODE. Read from the fan tables of MSI BIOS 2A52
+ * for the PRO X870E-P WIFI (MS-7E70); LibreHardwareMonitor uses the same map.
+ */
+static bool nct6687_msi_alt_system_fan(int index)
 {
 	return index >= NCT6687_FIRST_SYSTEM_FAN_INDEX &&
-	       nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 &&
-	       msi_fan_brute_force;
+	       nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1;
 }
 
-/*
- * A fan's PWM target is its reg_pwm_write register, or with curve writes the
- * first register of all 7 points of the MSI fan curve.
- *
- * On some MSI boards with NCT6687D, system fans (index >= 2) only respond
- * to changes in the fan curve registers, not to direct PWM writes.
- *
- * Each fan curve point consists of 2 consecutive registers:
- *   - register0 (offset +0): Temperature threshold or PWM value
- *   - register1 (offset +1): Purpose unclear, left unchanged
- *
- * This "brute force" method writes the PWM value to register0 of all 7 curve
- * points (every 2nd register), creating a flat curve where the fan runs at
- * constant speed regardless of temperature.
- *
- * Based on LibreHardwareMonitor implementation (count += 2 loop):
- * https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/commit/a55a7a772e5fee7a91f277b01032dc1e8a225e7c
- */
-static unsigned int nct6687_target_points(int index)
+static u16 nct6687_manual_reg(int index)
 {
-	return nct6687_uses_msi_fan_curve(index) ? NCT6687_FAN_CURVE_POINTS : 1;
+	return nct6687_msi_alt_system_fan(index) ? NCT6687_REG_FAN_CTRL_MODE_HIGH :
+						   NCT6687_REG_FAN_CTRL_MODE;
 }
 
-static u16 nct6687_target_register(int index, unsigned int point)
+static u8 nct6687_manual_mask(int index)
 {
-	return NCT6687_REG_PWM_WRITE(index) + point * NCT6687_FAN_CURVE_POINT_SIZE;
+	if (nct6687_msi_alt_system_fan(index))
+		return BIT(7 - (index - NCT6687_FIRST_SYSTEM_FAN_INDEX));
+
+	return BIT(index);
 }
 
-static void nct6687_read_target(struct nct6687_data *data, int index, u8 *target)
+static bool nct6687_read_manual(struct nct6687_data *data, int index)
 {
-	unsigned int i;
-
-	for (i = 0; i < nct6687_target_points(index); i++)
-		target[i] = nct6687_read(data, nct6687_target_register(index, i));
+	return nct6687_read(data, nct6687_manual_reg(index)) & nct6687_manual_mask(index);
 }
 
-/* Writes the points that differ and returns true when every point holds its value. */
-static bool nct6687_write_target(struct nct6687_data *data, int index, const u8 *target)
+/* Writes the target if it differs and returns true when the register holds it. */
+static bool nct6687_write_target(struct nct6687_data *data, int index, u8 target)
 {
-	unsigned int points = nct6687_target_points(index);
-	bool changed = false;
-	unsigned int i;
+	u16 reg = NCT6687_REG_PWM_WRITE(index);
 
-	for (i = 0; i < points; i++) {
-		u16 reg = nct6687_target_register(index, i);
-
-		if (nct6687_read(data, reg) != target[i]) {
-			nct6687_write(data, reg, target[i]);
-			changed = true;
-		}
-	}
-
-	if (!changed)
+	if (nct6687_read(data, reg) == target)
 		return true;
 
-	for (i = 0; i < points; i++) {
-		if (nct6687_read(data, nct6687_target_register(index, i)) != target[i]) {
-			pr_err("Failed to verify fan %d PWM target\n", index);
-			return false;
-		}
+	nct6687_write(data, reg, target);
+	if (nct6687_read(data, reg) != target) {
+		pr_err("Failed to verify fan %d PWM target\n", index);
+		return false;
 	}
 
 	return true;
@@ -876,14 +889,13 @@ static void nct6687_update_voltage(struct nct6687_data *data)
 	pr_debug("nct6687_update_voltage\n");
 }
 
-static enum pwm_enable nct6687_pwm_enable_of(u8 ctrl_mode, int index)
+static enum pwm_enable nct6687_pwm_enable_of(struct nct6687_data *data, int index)
 {
-	return (ctrl_mode & BIT(index)) ? manual_mode : auto_mode;
+	return nct6687_read_manual(data, index) ? manual_mode : auto_mode;
 }
 
 static void nct6687_update_fans(struct nct6687_data *data)
 {
-	u8 ctrl_mode;
 	int i;
 
 	/* tachometer-only channels included (no PWM state touched here) */
@@ -900,13 +912,12 @@ static void nct6687_update_fans(struct nct6687_data *data)
 		pr_debug("%s[%d], rpm=%d", __func__, i, rpm);
 	}
 
-	ctrl_mode = nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE);
 	for (i = 0; i < NCT6687_NUM_REG_PWM; i++) {
 		if (!NCT6687_FAN_ENABLED(i))
 			continue;
 
 		data->pwm[i] = nct6687_read(data, NCT6687_REG_PWM(i));
-		data->pwm_enable[i] = nct6687_pwm_enable_of(ctrl_mode, i);
+		data->pwm_enable[i] = nct6687_pwm_enable_of(data, i);
 
 		pr_debug("%s[%d], pwm=%d", __func__, i, data->pwm[i]);
 	}
@@ -1025,13 +1036,14 @@ static bool finish_fan_cfg_update(struct nct6687_data *data)
 /* Sets or clears the channel's manual-control bit; nct6687_refresh_fan_state() verifies it. */
 static void nct6687_write_manual_bit(struct nct6687_data *data, int index, bool manual_control)
 {
-	u8 mode = nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE);
+	u16 reg = nct6687_manual_reg(index);
+	u8 mode = nct6687_read(data, reg);
 
 	if (manual_control)
-		mode |= BIT(index);
+		mode |= nct6687_manual_mask(index);
 	else
-		mode &= ~BIT(index);
-	nct6687_write(data, NCT6687_REG_FAN_CTRL_MODE, mode);
+		mode &= ~nct6687_manual_mask(index);
+	nct6687_write(data, reg, mode);
 }
 
 /*
@@ -1042,8 +1054,7 @@ static void nct6687_write_manual_bit(struct nct6687_data *data, int index, bool 
 static bool nct6687_refresh_fan_state(struct nct6687_data *data, int index, bool manual_control)
 {
 	data->pwm[index] = nct6687_read(data, NCT6687_REG_PWM(index));
-	data->pwm_enable[index] = nct6687_pwm_enable_of(nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE),
-							index);
+	data->pwm_enable[index] = nct6687_pwm_enable_of(data, index);
 	if ((data->pwm_enable[index] == manual_mode) != manual_control) {
 		pr_err("Failed to verify fan %d control mode\n", index);
 		return false;
@@ -1064,12 +1075,12 @@ static void nct6687_save_fan_control(struct nct6687_data *data, int index)
 	if (saved->saved)
 		return;
 
-	saved->manual_control = nct6687_read(data, NCT6687_REG_FAN_CTRL_MODE) & BIT(index);
-	nct6687_read_target(data, index, saved->target);
+	saved->manual_control = nct6687_read_manual(data, index);
+	saved->target = nct6687_read(data, NCT6687_REG_PWM_WRITE(index));
 	saved->saved = true;
 
-	pr_debug("Saved fan %d state: manual=%d, PWM target %*ph\n", index,
-		 saved->manual_control, nct6687_target_points(index), saved->target);
+	pr_debug("Saved fan %d state: manual=%d, PWM target %u\n", index,
+		 saved->manual_control, saved->target);
 }
 
 /* Writes the saved PWM target back; true when nothing is saved. */
@@ -1114,7 +1125,6 @@ static bool nct6687_restore_fan_control(struct nct6687_data *data, int index)
 static int nct6687_write_pwm(struct device *dev, int index, long val)
 {
 	struct nct6687_data *data = dev_get_drvdata(dev);
-	u8 target[NCT6687_FAN_CURVE_POINTS];
 	bool success;
 
 	if (val < 0 || val > 255 || index >= NCT6687_NUM_REG_FAN)
@@ -1133,8 +1143,7 @@ static int nct6687_write_pwm(struct device *dev, int index, long val)
 
 	nct6687_save_fan_control(data, index);
 	nct6687_write_manual_bit(data, index, true);
-	memset(target, val, sizeof(target));
-	success = nct6687_write_target(data, index, target);
+	success = nct6687_write_target(data, index, val);
 
 	if (!finish_fan_cfg_update(data))
 		success = false;
@@ -1298,7 +1307,302 @@ static struct attribute *nct6687_fan_watchdog_attrs[] = {
 	NULL,
 };
 
-ATTRIBUTE_GROUPS(nct6687_fan_watchdog);
+static const struct attribute_group nct6687_fan_watchdog_group = {
+	.attrs = nct6687_fan_watchdog_attrs,
+};
+
+/*
+ * Automatic fan curves (msi_alt1 boards with the NCT6687D-R).
+ *
+ * Each PWM channel's curve is a 24-byte block in EC space:
+ *   bytes 0-6:   7 temperature points, in degrees C
+ *   byte 7:      0
+ *   bytes 8-20:  7 duty points (0-255) at even offsets; the odd bytes are 0
+ *   bytes 21-23: unknown (02 05 05 on MS-7E70), left as read
+ * The block of EC fan channel ch is at 0xB00 + 0x18 * ch. The EC runs the
+ * curve while the channel is not under manual control; a curve written during
+ * manual control takes effect when the channel returns to automatic mode.
+ *
+ * The EC interpolates linearly between the points against the CPU temperature
+ * and ramps the output at about 2 % per second. It takes a new curve only
+ * inside the configuration handshake (start_fan_cfg_update() and
+ * finish_fan_cfg_update()). It rejects a curve whose duty falls as the
+ * temperature rises: NCT6687_REG_FAN_ENGINE_STS then reads 0xF4, with
+ * NCT6687_FAN_CFG_INVALID and NCT6687_FAN_DRIVE_BY_DEFAULT_VAL set, and every
+ * fan runs at a fixed default duty (154 on MS-7E70) until a valid curve is
+ * written. On acceptance the status reads 0x60 or 0x64.
+ *
+ * Measured on an MSI PRO X870E-P WIFI (MS-7E70) on 2026-11-08 by direct EC
+ * access: raising duty point 1 of SYS_FAN1 (0xC70) from 127 to 170 moved only
+ * SYS_FAN1, from 158 to 175, and raising duty point 2 of CPU_FAN (0xB0A) from
+ * 89 to 120 moved only CPU_FAN, from 107 to 132, at a CPU temperature of 49 C.
+ * The block addresses of PUMP and SYS_FAN2-6 follow the 0x18 stride.
+ *
+ * The firmware writes its own curves back on resume from S3, so the driver
+ * writes back the curves set through its attributes (nct6687_restore_curves()).
+ */
+#define NCT6687_CURVE_PWM_OFFSET 8
+/* Above 127 C the byte's signedness is unknown; no firmware curve goes there. */
+#define NCT6687_CURVE_TEMP_MAX 127
+
+/* Curve blocks of the PWM channels in the msi_alt1 mapping, in channel order. */
+static const u16 nct6687_curve_msi_alt[NCT6687_NUM_REG_PWM] = {
+	0xB00, 0xB18, 0xC68, 0xC50, 0xC38, 0xC20, 0xC08, 0xBF0,
+};
+
+/* The channel's curve block, or 0 when it is not known for this board. */
+static u16 nct6687_curve_reg(int index)
+{
+	if (!nct6687_curve_board)
+		return 0;
+
+	return nct6687_curve_msi_alt[index];
+}
+
+static u16 nct6687_curve_temp_reg(int index, int point)
+{
+	return nct6687_curve_reg(index) + point;
+}
+
+static u16 nct6687_curve_pwm_reg(int index, int point)
+{
+	return nct6687_curve_reg(index) + NCT6687_CURVE_PWM_OFFSET +
+	       point * NCT6687_FAN_CURVE_POINT_SIZE;
+}
+
+static void nct6687_read_curve(struct nct6687_data *data, int index, struct nct6687_curve *curve)
+{
+	int i;
+
+	for (i = 0; i < NCT6687_FAN_CURVE_POINTS; i++) {
+		curve->temp[i] = nct6687_read(data, nct6687_curve_temp_reg(index, i));
+		curve->pwm[i] = nct6687_read(data, nct6687_curve_pwm_reg(index, i));
+	}
+}
+
+/* The EC accepts only a curve whose points do not fall. */
+static bool nct6687_curve_valid(const struct nct6687_curve *curve)
+{
+	int i;
+
+	for (i = 1; i < NCT6687_FAN_CURVE_POINTS; i++) {
+		if (curve->temp[i] < curve->temp[i - 1] || curve->pwm[i] < curve->pwm[i - 1])
+			return false;
+	}
+
+	return true;
+}
+
+/* Writes all 14 points in one handshake; true when the EC holds and accepted them. */
+static bool nct6687_write_curve(struct nct6687_data *data, int index,
+				const struct nct6687_curve *curve)
+{
+	struct nct6687_curve written;
+	bool success;
+	int i;
+
+	if (!start_fan_cfg_update(data))
+		return false;
+
+	for (i = 0; i < NCT6687_FAN_CURVE_POINTS; i++) {
+		nct6687_write(data, nct6687_curve_temp_reg(index, i), curve->temp[i]);
+		nct6687_write(data, nct6687_curve_pwm_reg(index, i), curve->pwm[i]);
+	}
+
+	nct6687_read_curve(data, index, &written);
+	success = !memcmp(&written, curve, sizeof(written));
+	if (!success)
+		pr_err("Failed to verify fan %d curve\n", index);
+
+	if (!finish_fan_cfg_update(data))
+		success = false;
+
+	return success;
+}
+
+/*
+ * Writes back the curves written through the attributes, which the firmware
+ * replaces with its own on resume.
+ */
+static void nct6687_restore_curves(struct nct6687_data *data)
+{
+	int index;
+
+	for_each_set_bit(index, &data->curves_written, NCT6687_NUM_REG_PWM) {
+		if (!nct6687_write_curve(data, index, &data->curves[index]))
+			dev_err(data->dev, "Failed to restore fan %d curve\n", index);
+	}
+}
+
+static int nct6687_store_curve_point(struct device *dev, struct device_attribute *attr,
+				     bool is_temp, u8 value)
+{
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+	struct nct6687_data *data = dev_get_drvdata(dev);
+	int index = sattr->nr;
+	int point = sattr->index;
+	struct nct6687_curve old, curve;
+	int err = 0;
+
+	mutex_lock(&data->update_lock);
+
+	if (data->removing) {
+		err = -ENODEV;
+		goto out;
+	}
+
+	nct6687_read_curve(data, index, &old);
+	curve = old;
+	if (is_temp)
+		curve.temp[point] = value;
+	else
+		curve.pwm[point] = value;
+
+	if (!nct6687_curve_valid(&curve)) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	/* An unchanged curve is still remembered, so resume writes it back. */
+	if (memcmp(&curve, &old, sizeof(curve)) &&
+	    !nct6687_write_curve(data, index, &curve)) {
+		dev_err(dev, "fan %d curve not accepted (engine status 0x%02x); restoring the previous curve\n",
+			index, nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS));
+		if (!nct6687_write_curve(data, index, &old))
+			dev_err(dev, "Failed to restore fan %d curve\n", index);
+		err = -EIO;
+		goto out;
+	}
+
+	data->curves[index] = curve;
+	set_bit(index, &data->curves_written);
+
+out:
+	mutex_unlock(&data->update_lock);
+
+	return err;
+}
+
+static ssize_t nct6687_curve_temp_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+	struct nct6687_data *data = dev_get_drvdata(dev);
+	u8 value;
+
+	mutex_lock(&data->update_lock);
+	value = nct6687_read(data, nct6687_curve_temp_reg(sattr->nr, sattr->index));
+	mutex_unlock(&data->update_lock);
+
+	return sysfs_emit(buf, "%d\n", value * 1000);
+}
+
+static ssize_t nct6687_curve_temp_store(struct device *dev, struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	long val;
+	int err;
+
+	err = kstrtol(buf, 10, &val);
+	if (err)
+		return err;
+
+	val = DIV_ROUND_CLOSEST(clamp_val(val, 0, NCT6687_CURVE_TEMP_MAX * 1000), 1000);
+	err = nct6687_store_curve_point(dev, attr, true, val);
+
+	return err ? err : count;
+}
+
+static ssize_t nct6687_curve_pwm_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct sensor_device_attribute_2 *sattr = to_sensor_dev_attr_2(attr);
+	struct nct6687_data *data = dev_get_drvdata(dev);
+	u8 value;
+
+	mutex_lock(&data->update_lock);
+	value = nct6687_read(data, nct6687_curve_pwm_reg(sattr->nr, sattr->index));
+	mutex_unlock(&data->update_lock);
+
+	return sysfs_emit(buf, "%d\n", value);
+}
+
+static ssize_t nct6687_curve_pwm_store(struct device *dev, struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	long val;
+	int err;
+
+	err = kstrtol(buf, 10, &val);
+	if (err)
+		return err;
+
+	if (val < 0 || val > 255)
+		return -EINVAL;
+
+	err = nct6687_store_curve_point(dev, attr, false, val);
+
+	return err ? err : count;
+}
+
+/* Creates curve attribute n: pwmN_auto_pointM_temp or pwmN_auto_pointM_pwm. */
+static int nct6687_add_curve_attr(struct device *dev, struct nct6687_data *data, int n,
+				  int index, int point, bool is_temp)
+{
+	struct sensor_device_attribute_2 *sattr = &data->curve_sattrs[n];
+	const char *name;
+
+	name = devm_kasprintf(dev, GFP_KERNEL, "pwm%d_auto_point%d_%s",
+			      index + 1, point + 1, is_temp ? "temp" : "pwm");
+	if (!name)
+		return -ENOMEM;
+
+	sysfs_attr_init(&sattr->dev_attr.attr);
+	sattr->dev_attr.attr.name = name;
+	sattr->dev_attr.attr.mode = 0644;
+	sattr->dev_attr.show = is_temp ? nct6687_curve_temp_show : nct6687_curve_pwm_show;
+	sattr->dev_attr.store = is_temp ? nct6687_curve_temp_store : nct6687_curve_pwm_store;
+	sattr->nr = index;
+	sattr->index = point;
+	data->curve_attrs[n] = &sattr->dev_attr.attr;
+
+	return 0;
+}
+
+/*
+ * Creates pwmN_auto_pointM_temp and pwmN_auto_pointM_pwm for every enabled
+ * channel with a known curve block, and the attribute groups to register.
+ */
+static int nct6687_init_groups(struct device *dev, struct nct6687_data *data)
+{
+	int groups = 0;
+	int count = 0;
+	int index;
+	int point;
+	int err;
+
+	data->groups[groups++] = &nct6687_fan_watchdog_group;
+
+	for (index = 0; index < NCT6687_NUM_REG_PWM; index++) {
+		if (!nct6687_curve_reg(index) || !NCT6687_FAN_ENABLED(index))
+			continue;
+
+		for (point = 0; point < NCT6687_FAN_CURVE_POINTS; point++) {
+			err = nct6687_add_curve_attr(dev, data, count++, index, point, true);
+			if (err)
+				return err;
+
+			err = nct6687_add_curve_attr(dev, data, count++, index, point, false);
+			if (err)
+				return err;
+		}
+	}
+
+	if (count) {
+		data->curve_group.attrs = data->curve_attrs;
+		data->groups[groups++] = &data->curve_group;
+	}
+
+	return 0;
+}
 
 static umode_t nct6687_is_visible(const void *drvdata,
 				  enum hwmon_sensor_types type, u32 attr, int channel)
@@ -1521,8 +1825,8 @@ static int nct6687_probe(struct platform_device *pdev)
 
 	if (data->kind == nct6687 && nct6687_board) {
 		dev_info(dev, "Detected MSI board; using alternative fan configuration (msi_alt1)\n");
-		dev_info(dev, "MSI fan brute force mode: %s\n",
-				 msi_fan_brute_force ? "enabled" : "disabled");
+		if (msi_fan_brute_force)
+			dev_info(dev, "msi_fan_brute_force is no longer used and is ignored\n");
 	}
 
 	/*
@@ -1557,9 +1861,13 @@ static int nct6687_probe(struct platform_device *pdev)
 
 	dev_info(dev, "%s EC firmware version %d.%d build %s\n", nct6687_chip_names[data->kind], nct6687_read(data, NCT6687_REG_VERSION_HI), nct6687_read(data, NCT6687_REG_VERSION_LO), build);
 
+	err = nct6687_init_groups(dev, data);
+	if (err)
+		return err;
+
 	hwmon_dev = devm_hwmon_device_register_with_info(
 		dev, nct6687_device_names[data->kind], data,
-		&nct6687_chip_info, nct6687_fan_watchdog_groups);
+		&nct6687_chip_info, data->groups);
 	if (IS_ERR(hwmon_dev))
 		return PTR_ERR(hwmon_dev);
 
@@ -1591,6 +1899,9 @@ static int nct6687_resume(struct device *dev)
 	mutex_lock(&data->update_lock);
 
 	nct6687_write(data, NCT6687_HWM_CFG, data->hwm_cfg);
+
+	if (!data->removing)
+		nct6687_restore_curves(data);
 
 	/* Force re-reading all values */
 	data->valid = false;
@@ -1772,6 +2083,9 @@ static int __init sensors_nct6687_init(void)
 		nct6687_fan_config_active = nct6687_fan_config_msi_alt;
 		nct6687_fan_channels = nct6687_msi_alt_channels();
 	}
+
+	nct6687_curve_board = nct6687_fan_config_type == FAN_CONFIG_MSI_ALT1 &&
+			      dmi_first_match(nct6687_curve_boards);
 
 	/*
 	 * Board is known now: resolve the sentinel for every path that did not
