@@ -212,18 +212,11 @@ chip "nct6687-*"
 
   `msi_alt1` is automatically enabled for supported MSI motherboards. Manual configuration is only needed for unsupported boards.
 
-- **msi_fan_brute_force** (bool) (default: false) **[BETA]**
-  For MSI motherboards with `msi_alt1` configuration: When enabled, writes PWM values to all 7 fan 
-  curve control points. This may help with fan control on some MSI boards where standard PWM writes 
-  don't take effect immediately. Only affects system fans controlled by the BIOS. Not the CPU fan or pump fan. 
+- **msi_fan_brute_force** (bool) (default: false)
+  No longer used, and ignored. It is kept so that existing `options nct6687 msi_fan_brute_force=1` lines still load.
 
-  Before entering manual control, the driver saves all 7 original curve points. The saved curve is restored like every other saved fan state (see [Fan-control watchdog](#fan-control-watchdog)).
-  
-  This implementation is based on register mappings from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
-  
-  Usage: `modprobe nct6687 msi_fan_brute_force=1`
-
-  Note: This option requires blacklisting the `nct6683` module to prevent it from loading instead of `nct6687`. See the [Issues](#issues) section for detailed instructions.
+  On `msi_alt1` boards, manual control of the system fans now sets each fan's own manual-control bit (EC register `0x80F`) and writes its direct PWM register (`0x260`-`0x265`), instead of flattening the fan's automatic curve.
+  The map comes from the fan tables of MSI BIOS 2A52 for the PRO X870E-P WIFI (MS-7E70); [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) uses the same registers.
 
 - **fan_mask** (uint) (default: all channels, `0xff`)
   Bitmask of the fan/pwm channels to expose. Bit 0 controls `fan1`/`pwm1`, bit 1
@@ -252,7 +245,7 @@ chip "nct6687-*"
   ```
 
 <details>
-  <summary>Supported MSI boards for ("msi_alt1" and "msi_fan_brute_force")</summary>
+  <summary>Supported MSI boards for "msi_alt1"</summary>
 
   | Board | DMI |
   | --- | ---: |
@@ -369,7 +362,7 @@ echo 1 > pwm6_enable
 
 ### Fan-control watchdog
 
-Before its first change to a channel, the driver saves the channel's PWM target (all 7 curve points with `msi_fan_brute_force`) and control mode. The saved state is restored when userspace writes automatic mode to `pwmN_enable`, when the driver is unloaded, or when the fan-control watchdog expires.
+Before its first change to a channel, the driver saves the channel's PWM target and control mode. The saved state is restored when userspace writes automatic mode to `pwmN_enable`, when the driver is unloaded, or when the fan-control watchdog expires.
 
 `fan_control_watchdog` (in the hwmon device folder) holds a manual-control lease. Writing a timeout from 1 to 300 seconds arms or refreshes it. If the lease expires, every channel changed since its last automatic-mode request is restored to its saved state; a channel that fails to restore is retried every second, and the file keeps reading the timeout until every channel is back. Writing `0` disarms the watchdog. A controlling daemon should refresh the lease independently of PWM value changes and disarm it only after returning all channels to automatic control. The lease is paused while the system is suspended and resumes with its remaining time after the device is active again.
 
@@ -404,23 +397,19 @@ To make this permanent, blacklist `nct6683` and remove it from `HWMON_MODULES`:
 ```
 A blacklist only stops automatic loading; an explicit `modprobe nct6683` (as done for `HWMON_MODULES`) still loads it. Use `install nct6683 /bin/false` instead of `blacklist nct6683` to block that too.
 
-### Loading `msi_fan_brute_force` parameter fails
+### System fans do not respond on MSI boards
 - Symptom: No RPM value is displayed for some fans in the sensor data; or the following behavior is observed: the fan stops at 60%
 - Solution steps:
   1. Prevent the wrong driver from loading:
      ```sh
      echo "blacklist nct6683" | sudo tee /etc/modprobe.d/nct6683_blacklist.conf
      ```
-  2. Set module option to enable brute-force fan curve writes for MSI boards:
-     ```sh
-     echo "options nct6687 msi_fan_brute_force=1" | sudo tee /etc/modprobe.d/nct6687_msi.conf
-     ```
-  3. Ensure the `nct6687` module is loaded at boot:
+  2. Ensure the `nct6687` module is loaded at boot:
      ```sh
      echo "nct6687" | sudo tee /etc/modules-load.d/nct6687.conf
      ```
-  4. Reboot and verify the module loads correctly.   
-   
+  3. Reboot and verify the module loads correctly.
+
 
 - After installation:
   Check `/etc/conf.d/lm-sensors.conf` (or your distro's equivalent) that `HWMON_MODULES` not includes `nct6683` (e.g., `HWMON_MODULES="coretemp nct6683 ..."`) to ensure the correct driver is loaded at boot.
