@@ -1359,13 +1359,6 @@ static inline void nct6687_init_device(struct nct6687_data *data)
 		pr_debug("%s: 0x%04x\n", __func__, tmp);
 		nct6687_write(data, NCT6687_HWM_CFG, tmp | 0x80);
 	}
-
-	// enable SIO voltage
-	nct6687_write(data, 0x1BB, 0x61);
-	nct6687_write(data, 0x1BC, 0x62);
-	nct6687_write(data, 0x1BD, 0x63);
-	nct6687_write(data, 0x1BE, 0x64);
-	nct6687_write(data, 0x1BF, 0x65);
 }
 
 static void nct6687_restore_firmware_state(void *arg)
