@@ -205,12 +205,12 @@ chip "nct6687-*"
   You can use custom labels and ignore inputs without setting this option if
   you can figure out their names (see which `*_label` contains builtin label).
 
-- **fan_config** (`default`, `msi_alt1`) (default: `default`) Changes fan configuration 
+- **fan_config** (`auto`, `default`, `msi_alt1`) (default: `auto`) Changes fan configuration 
   for RPM & PWM registers for motherboards with alternative chip configurations.
   
   Motherboards which need this will show CPU/Pump RPMs but no data on System fans.
 
-  `msi_alt1` is automatically enabled for supported MSI motherboards. Manual configuration is only needed for unsupported boards.
+  `auto` selects `msi_alt1` for the supported MSI motherboards listed below and `default` for every other board. An explicit `default` or `msi_alt1` is always used as given, also on a listed board. After loading, `/sys/module/nct6687/parameters/fan_config` reads the configuration in use.
 
 - **msi_fan_brute_force** (bool) (default: false) **[BETA]**
   For MSI motherboards with `msi_alt1` configuration: When enabled, writes PWM values to all 7 fan 
@@ -225,11 +225,14 @@ chip "nct6687-*"
 
   Note: This option requires blacklisting the `nct6683` module to prevent it from loading instead of `nct6687`. See the [Issues](#issues) section for detailed instructions.
 
-- **fan_mask** (uint) (default: all channels, `0xff`)
+- **fan_mask** (uint) (default: all channels, `0x1ff`)
   Bitmask of the fan/pwm channels to expose. Bit 0 controls `fan1`/`pwm1`, bit 1
-  controls `fan2`/`pwm2`, and so on up to bit 7 for `fan8`/`pwm8`. Both the
+  controls `fan2`/`pwm2`, and so on up to bit 7 for `fan8`/`pwm8`, and bit 8 for
+  the tachometer-only `fan9` (second pump header). Both the
   tachometer and PWM attributes of a channel are covered by the same bit, since
-  `fanN_input` and `pwmN` are the same physical header.
+  `fanN_input` and `pwmN` are the same physical header. Channels the board does
+  not have stay hidden whatever the mask: `fan9` exists only with `msi_alt1` on
+  the MEG Z890 GODLIKE.
 
   Useful on boards with fewer than 8 headers, where the unused channels report a
   constant 0 RPM.
@@ -429,12 +432,13 @@ A blacklist only stops automatic loading; an explicit `modprobe nct6683` (as don
 On MSI motherboards, `msi_alt1` configuration is automatically detected and enabled.
 You can verify this in `dmesg` after loading the module:
 ```
-nct6687 nct6687.2592: Detected MSI board; using alternative fan configuration (msi_alt1)
-nct6687 nct6687.2592: active fan config=msi_alt1, SYS_FAN reg_rpm=0x015E/0x015C/0x015A
+nct6687: active fan config=msi_alt1 (listed MSI board), 8 fan channels, MSI fan brute force disabled, fan mask=0x1ff, temp mask=0x7f, board "PRO X870E-P WIFI (MS-7E70)"
 ```
 
-The second line is always printed and shows the EC offsets the driver reads
-for SYS_FAN #1/#2/#3. Use it to confirm the right mapping is active.
+This line is always printed. It shows the fan configuration in use, why it was
+chosen (`listed MSI board`, `unlisted board`, or `set by fan_config`), the
+number of fan channels, both masks and the board name. Use it to confirm the
+right mapping is active.
 
 If you have a non-MSI motherboard with this issue, try using module parameter `fan_config=msi_alt1` manually.
 
