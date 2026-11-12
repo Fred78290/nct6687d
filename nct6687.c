@@ -26,6 +26,7 @@
 
 #include <linux/acpi.h>
 #include <linux/bits.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/dmi.h>
 #include <linux/err.h>
@@ -38,6 +39,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/version.h>
@@ -1391,12 +1393,56 @@ static void nct6687_restore_firmware_state(void *arg)
 	mutex_unlock(&data->update_lock);
 }
 
+/*
+ * EC pages dumped by debugfs ec_pages. Page 4 holds the EC's SMBus master;
+ * the firmware stops POST when that master stays busy, so it is never read.
+ */
+#define NCT6687_EC_DUMP_FIRST_PAGE 0x01
+#define NCT6687_EC_DUMP_LAST_PAGE 0x0E
+#define NCT6687_EC_SMBUS_PAGE 0x04
+
+/* Read-only dump of the EC pages, one "PPR0: 16 bytes" line per row. */
+static int nct6687_ec_pages_show(struct seq_file *s, void *unused)
+{
+	struct nct6687_data *data = s->private;
+	int page, row, col;
+
+	mutex_lock(&data->update_lock);
+	if (data->removing) {
+		mutex_unlock(&data->update_lock);
+		return -ENODEV;
+	}
+
+	for (page = NCT6687_EC_DUMP_FIRST_PAGE; page <= NCT6687_EC_DUMP_LAST_PAGE; page++) {
+		if (page == NCT6687_EC_SMBUS_PAGE)
+			continue;
+
+		for (row = 0; row < 0x100; row += 0x10) {
+			seq_printf(s, "%04x:", (page << 8) | row);
+			for (col = 0; col < 0x10; col++)
+				seq_printf(s, " %02x", nct6687_read(data, (page << 8) | row | col));
+			seq_putc(s, '\n');
+		}
+	}
+
+	mutex_unlock(&data->update_lock);
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(nct6687_ec_pages);
+
+static void nct6687_remove_debugfs(void *arg)
+{
+	debugfs_remove_recursive(arg);
+}
+
 static int nct6687_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct nct6687_sio_data *sio_data = dev->platform_data;
 	struct nct6687_data *data;
 	struct device *hwmon_dev;
+	struct dentry *debugfs;
 	struct resource *res;
 	char build[16];
 	int err;
@@ -1433,6 +1479,13 @@ static int nct6687_probe(struct platform_device *pdev)
 		&nct6687_chip_info, nct6687_fan_watchdog_groups);
 	if (IS_ERR(hwmon_dev))
 		return PTR_ERR(hwmon_dev);
+
+	/* Registered after hwmon, so it is removed first. */
+	debugfs = debugfs_create_dir(dev_name(dev), NULL);
+	debugfs_create_file("ec_pages", 0400, debugfs, data, &nct6687_ec_pages_fops);
+	err = devm_add_action_or_reset(dev, nct6687_remove_debugfs, debugfs);
+	if (err)
+		return err;
 
 	return 0;
 }
