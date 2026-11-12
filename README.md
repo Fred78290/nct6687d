@@ -373,6 +373,7 @@ echo 1 > pwm6_enable
 ### Fan-control watchdog
 
 Before its first change to a channel, the driver saves the channel's PWM target (all 7 curve points with `msi_fan_brute_force`) and control mode. The saved state is restored when userspace writes automatic mode to `pwmN_enable`, when the driver is unloaded, or when the fan-control watchdog expires.
+On reboot and power-off the driver does not restore it; it only leaves the EC's fan configuration handshake idle (no pending request, no open phase), as it also does on suspend and unload.
 
 `fan_control_watchdog` (in the hwmon device folder) holds a manual-control lease. Writing a timeout from 1 to 300 seconds arms or refreshes it. If the lease expires, every channel changed since its last automatic-mode request is restored to its saved state; a channel that fails to restore is retried every second, and the file keeps reading the timeout until every channel is back. Writing `0` disarms the watchdog. A controlling daemon should refresh the lease independently of PWM value changes and disarm it only after returning all channels to automatic control. The lease is paused while the system is suspended and resumes with its remaining time after the device is active again.
 

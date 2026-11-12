@@ -893,6 +893,8 @@ static bool start_fan_cfg_update(struct nct6687_data *data)
 			      USEC_PER_MSEC, USEC_PER_SEC, false,
 			      data, NCT6687_REG_FAN_ENGINE_STS)) {
 		pr_err("Failed to gain access to fan configuration registers\n");
+		/* Withdraw the request, so the firmware does not wait on it at the next boot. */
+		nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND, 0);
 		return false;
 	}
 
@@ -941,6 +943,28 @@ static bool finish_fan_cfg_update(struct nct6687_data *data)
 	}
 
 	return success;
+}
+
+/*
+ * Leaves the fan configuration handshake idle (no request in
+ * NCT6687_REG_FAN_PWM_COMMAND, no open phase), as the firmware expects at the
+ * next boot or resume. This driver opens a phase only under update_lock and
+ * always closes it, so this acts only on state left by someone else. Call it
+ * with update_lock held.
+ */
+static void nct6687_leave_ec_idle(struct nct6687_data *data)
+{
+	u8 engsts = nct6687_read(data, NCT6687_REG_FAN_ENGINE_STS);
+
+	if (!(engsts & NCT6687_FAN_CFG_LOCK) && (engsts & NCT6687_FAN_CFG_PHASE)) {
+		dev_warn(data->dev, "Closing an open fan configuration phase\n");
+		finish_fan_cfg_update(data);
+	}
+
+	if (nct6687_read(data, NCT6687_REG_FAN_PWM_COMMAND) & NCT6687_FAN_CFG_REQ) {
+		dev_warn(data->dev, "Withdrawing a pending fan configuration request\n");
+		nct6687_write(data, NCT6687_REG_FAN_PWM_COMMAND, 0);
+	}
 }
 
 /* Sets or clears the channel's manual-control bit; nct6687_refresh_fan_state() verifies it. */
@@ -1388,6 +1412,8 @@ static void nct6687_restore_firmware_state(void *arg)
 			dev_err(dev, "Failed to restore fan %d control state\n", i);
 	}
 
+	nct6687_leave_ec_idle(data);
+
 	mutex_unlock(&data->update_lock);
 }
 
@@ -1449,6 +1475,7 @@ static int nct6687_suspend(struct device *dev)
 
 	mutex_lock(&data->update_lock);
 	data->hwm_cfg = nct6687_read(data, NCT6687_HWM_CFG);
+	nct6687_leave_ec_idle(data);
 	mutex_unlock(&data->update_lock);
 
 	return 0;
@@ -1494,12 +1521,35 @@ static DEFINE_SIMPLE_DEV_PM_OPS(nct6687_dev_pm_ops, nct6687_suspend,
 #define NCT6687_PM_OPS pm_sleep_ptr(&nct6687_dev_pm_ops)
 #endif
 
+/*
+ * Reboot and power-off do not unbind the device, so the devm release action
+ * does not run. Stop all EC access and leave the handshake idle; fan control
+ * is left as it is, as on suspend.
+ */
+static void nct6687_shutdown(struct platform_device *pdev)
+{
+	struct nct6687_data *data = platform_get_drvdata(pdev);
+
+	mutex_lock(&data->fan_watchdog_lock);
+	mutex_lock(&data->update_lock);
+	data->removing = true;
+	data->fan_watchdog_timeout = 0;
+	mutex_unlock(&data->update_lock);
+	cancel_delayed_work_sync(&data->fan_watchdog_work);
+	mutex_unlock(&data->fan_watchdog_lock);
+
+	mutex_lock(&data->update_lock);
+	nct6687_leave_ec_idle(data);
+	mutex_unlock(&data->update_lock);
+}
+
 static struct platform_driver nct6687_driver = {
 	.driver = {
 		.name = DRVNAME,
 		.pm = NCT6687_PM_OPS,
 	},
 	.probe = nct6687_probe,
+	.shutdown = nct6687_shutdown,
 };
 
 static int __init nct6687_find(int sioaddr, struct nct6687_sio_data *sio_data)
