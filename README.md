@@ -140,6 +140,23 @@ This module was tested on Ubuntu 20.04 with all kernel available on motherboard 
 - Many people have reported compatibility with MB having Intel H410M & H510M chipset from some manufacturer. See [issue](https://github.com/Fred78290/nct6687d/issues) report.
 <br>
 
+## ASRock W790 WS R2.0 (NCT6686D)
+
+Works with the unmodified driver, no `force=1` needed. Tested on Ubuntu 26.10,
+kernel 7.3.0-10. The board's NCT6686D (`0x2e:0xa20`, EC firmware 1.0 build
+08/29/22) registers as `nct6686-isa-0a20`.
+
+- Fan RPM, temperatures and `pwm[1-8]` / `pwm[1-8]_enable` are exposed.
+- Most voltages read 0.00 V (including +12V and +5V) with the default voltage
+  map, so do not trust voltage readings on this board.
+- The default fan labels are the MSI ones. [sensors.d/ASRock_W790_WS_R2.conf](./sensors.d/ASRock_W790_WS_R2.conf)
+  relabels the channels with the board's header names.
+- The in-kernel `nct6683` driver only binds to this board with `force=1`
+  (customer ID `0x162c`). If it is loaded, remove it first, see
+  [Conflict with the in-kernel `nct6683` driver](#conflict-with-the-in-kernel-nct6683-driver).
+- With Secure Boot enabled, see [Secure Boot](#secure-boot-loading-of-module-with-unavailable-key-is-rejected).
+<br>
+
 ## CHANGELOG
 
 - Add support for MSI B460M Bazooka having NCT6687 with another device ID
@@ -406,6 +423,21 @@ To make this permanent, blacklist `nct6683` and remove it from `HWMON_MODULES`:
 ~$ echo "blacklist nct6683" | sudo tee /etc/modprobe.d/nct6683_blacklist.conf
 ```
 A blacklist only stops automatic loading; an explicit `modprobe nct6683` (as done for `HWMON_MODULES`) still loads it. Use `install nct6683 /bin/false` instead of `blacklist nct6683` to block that too.
+
+### Secure Boot: `Loading of module with unavailable key is rejected`
+With Secure Boot enabled the kernel only loads modules signed by a key enrolled
+in the firmware. DKMS signs the module with a machine owner key (MOK), on
+Ubuntu `/var/lib/shim-signed/mok/MOK.der`. If that key was never enrolled,
+`modprobe nct6687` fails and `dmesg` shows the message above.
+
+```sh
+~$ mokutil --sb-state                                       # SecureBoot enabled?
+~$ sudo mokutil --test-key /var/lib/shim-signed/mok/MOK.der # "is already enrolled" means this is not the problem
+~$ sudo mokutil --import /var/lib/shim-signed/mok/MOK.der   # choose a one-time password
+```
+Reboot, press a key on the blue "Perform MOK management" screen, choose
+*Enroll MOK* -> *Continue* -> *Yes* and enter the password. After the next boot
+the module loads; it does not need to be rebuilt.
 
 ### Loading `msi_fan_brute_force` parameter fails
 - Symptom: No RPM value is displayed for some fans in the sensor data; or the following behavior is observed: the fan stops at 60%
